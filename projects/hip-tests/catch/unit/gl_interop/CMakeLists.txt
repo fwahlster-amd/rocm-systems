@@ -1,10 +1,12 @@
 # Copyright (c) Advanced Micro Devices, Inc., or its affiliates.
 #
 # SPDX-License-Identifier: MIT
-
+set(GLEW_INCLUDE_DIR "c:/glew-2.3.1/include")
+set(GLEW_SHARED_LIBRARY_RELEASE "c:/glew-2.3.1/lib/Release/x64/glew32.lib")
 set(TEST_SRC
     hipGLGetDevices.cc
     hipGLContextSwitch.cc
+    hipGLImageDataVerification.cc
     hipGraphicsGLRegisterBuffer.cc
     hipGraphicsGLRegisterImage.cc
     hipGraphicsMapResources.cc
@@ -70,6 +72,7 @@ endif()
 
 # GLEW is required on Windows for OpenGL extension access
 # On Linux, extensions are available via native headers
+set(GLEW_VERBOSE TRUE)
 find_package(GLEW)
 if(WIN32 AND NOT GLEW_FOUND)
   message(STATUS "GLEW required on Windows but not found, "
