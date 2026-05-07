@@ -10,6 +10,7 @@
 #include "nccl.h"
 #include "nccl_common.h"
 #include "net_device.h"
+#include "nccl_device/net_device.h"
 #include <stdint.h>
 #include <dlfcn.h>
 
@@ -26,6 +27,9 @@
 #define NCCL_PTR_CUDA 0x2
 #define NCCL_PTR_DMABUF 0x4
 
+#define NCCL_NET_MR_FLAG_FORCE_SO (1 << 0)
+#define NCCL_NET_SIGNAL_OP_INC 0x1
+#define NCCL_NET_SIGNAL_OP_ADD 0x2
 // Maximum number of requests per comm object
 #define NCCL_NET_MAX_REQUESTS 32
 
@@ -37,6 +41,8 @@
 #define NCCL_NET_MAX_DEVS_PER_NIC 4
 
 #include "net/net_v11.h"
+/* temporary merge workaround: shpuld be removed after net_v12.h integration */
+typedef ncclNetProperties_v11_t ncclNetProperties_v12_t;
 #include "net/net_v10.h"
 #include "net/net_v9.h"
 #include "net/net_v8.h"

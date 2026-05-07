@@ -126,7 +126,7 @@ set(SRC_FILES
   include/mnnvl.h
   include/nccl_common.h
   include/nccl_device.h
-  include/net_device.h
+  include/nccl_device/net_device.h
   include/net.h
   include/nvmlwrap.h
   include/nvtx.h
@@ -223,6 +223,13 @@ set(SRC_FILES
   include/plugin/nccl_profiler.h
   include/plugin/nccl_tuner.h
   include/plugin/plugin.h
+  include/plugin/nccl_gin.h
+  include/plugin/gin/gin_v11.h
+  include/plugin/gin/gin_v12.h
+  include/plugin/gin/gin_v13.h
+  include/gin/gin_host.h
+  include/gin/gin_host_proxy.h
+  include/nccl_device/gin/gin_device_host_common.h
   include/plugin/net/net_v6.h
   include/plugin/net/net_v7.h
   include/plugin/net/net_v8.h

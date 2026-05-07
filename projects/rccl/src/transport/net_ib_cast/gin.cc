@@ -34,13 +34,14 @@ static ncclResult_t ncclGinIbGdrSupport(bool* gdrSupport, bool gdaki) {
 
 // Check the current GPU supports GDR for GIN. This is run during connect().
 static ncclResult_t ncclGinIbGdrGpuSupport(bool gdaki) {
-#ifdef RCCL_NET_IB_CAST_ENABLE_GDAKI
+#if defined(__HIP_PLATFORM_AMD__) || defined(__HIPCC__)
+  if (IbCastDmaBufSupport(0) == ncclSuccess) return ncclSuccess;
+
+  WARN("Unable to use GIN: Peermem is not supported, and DMA-BUF is not available.");
+#else
   bool peerMemSupport =
      gdaki ? IbCastPeerMemSupport() == ncclSuccess : // GDAKI does not support nv_peer_mem.
      IbCastGdrSupport() == ncclSuccess;
-#else
-  bool peerMemSupport = IbCastGdrSupport() == ncclSuccess;
-#endif
   if (peerMemSupport) return ncclSuccess;
 
   int cudaDev;
@@ -50,6 +51,7 @@ static ncclResult_t ncclGinIbGdrGpuSupport(bool gdaki) {
   if (dmaBufSupportOnDevice == 1) return ncclSuccess;
 
   WARN("Unable to use GIN: Peermem is not supported, and device %d does not support DMA-BUF.", cudaDev);
+#endif
   return ncclInvalidUsage;
 }
 
