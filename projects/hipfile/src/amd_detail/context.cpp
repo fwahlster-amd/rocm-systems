@@ -8,6 +8,7 @@
 #include "state.h"
 #include "stats.h"
 #include "sys.h"
+#include "thread-pool.h"
 
 namespace hipFile {
 
@@ -16,6 +17,7 @@ hipFileInit()
 {
     Context<Hip>::get();
     Context<Sys>::get();
+    Context<IThreadPool>::get();
     Context<IStatsServer>::get();
     Context<DriverState>::get();
 }
