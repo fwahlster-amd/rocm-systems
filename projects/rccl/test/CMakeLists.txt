@@ -295,6 +295,7 @@ if(BUILD_TESTS)
       ImplicitLaunchOrderMPITests.cpp
       CommMPITests.cpp
       RegistrationMPITests.cpp
+      HostApiMPITests.cpp
       mem_manager/SuspendResumeMPITests.cpp
       RevokeMPITests.cpp
     )
