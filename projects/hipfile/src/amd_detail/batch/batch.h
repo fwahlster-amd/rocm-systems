@@ -93,6 +93,7 @@ public:
     virtual void     submit_operations(const hipFileIOParams_t *params, unsigned num_params) = 0;
     virtual void     get_status(unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp,
                                 struct timespec *timeout)                                    = 0;
+    virtual void     cancel_operations()                                                     = 0;
 };
 
 class BatchContext : public IBatchContext {
@@ -123,6 +124,11 @@ public:
     ///
     void get_status(unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp,
                     struct timespec *timeout) override;
+
+    ///
+    /// @brief Cancel outstanding operations from this Context.
+    ///
+    void cancel_operations() override;
 
 #ifdef AIS_TESTING
     /// @brief Add an operation directly for focused unit tests.

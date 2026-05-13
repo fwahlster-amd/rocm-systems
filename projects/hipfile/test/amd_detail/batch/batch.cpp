@@ -22,6 +22,7 @@
 #include <memory>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
 using ::testing::_;
 using ::testing::AllOf;
@@ -105,6 +106,57 @@ TEST_F(HipFileBatch, CancelWaitingOperationDoesNothing)
     op.cancel();
 
     ASSERT_EQ(op.get_status(), hipFileWaiting);
+}
+
+TEST_F(HipFileBatch, CancelPendingOperation)
+{
+    BatchOperation op = BatchOperation{std::move(io_params), default_mock_buffer, default_mock_file};
+
+    op.mark_pending();
+    op.cancel();
+
+    ASSERT_EQ(op.get_status(), hipFileCanceled);
+}
+
+TEST_F(HipFileBatch, CancelPendingOperationIsIdempotent)
+{
+    BatchOperation op = BatchOperation{std::move(io_params), default_mock_buffer, default_mock_file};
+
+    op.mark_pending();
+    op.cancel();
+    op.cancel();
+
+    ASSERT_EQ(op.get_status(), hipFileCanceled);
+}
+
+TEST_F(HipFileBatch, CancelOperationDoesNotOverwriteTerminalStatus)
+{
+    for (const hipFileStatus_t terminal_status :
+         {hipFileComplete, hipFileFailed, hipFileInvalid, hipFileTimeout}) {
+        SCOPED_TRACE(terminal_status);
+        auto           params = std::make_unique<hipFileIOParams_t>(*io_params);
+        BatchOperation op     = BatchOperation{std::move(params), default_mock_buffer, default_mock_file};
+
+        op.set_status_for_testing(terminal_status, 17);
+        op.cancel();
+
+        ASSERT_EQ(op.get_status(), terminal_status);
+        ASSERT_EQ(op.get_result(), 17);
+    }
+}
+
+TEST_F(HipFileBatch, CanceledOperationEventPreservesCookie)
+{
+    int cookie{};
+    io_params->cookie = &cookie;
+    BatchOperation op = BatchOperation{std::move(io_params), default_mock_buffer, default_mock_file};
+
+    op.mark_pending();
+    op.cancel();
+
+    hipFileIOEvents_t event = op.event();
+    ASSERT_EQ(event.cookie, &cookie);
+    ASSERT_EQ(event.status, hipFileCanceled);
 }
 
 TEST_F(HipFileBatch, RunCanceledOperationReturnsImmediately)
@@ -285,6 +337,26 @@ TEST_F(HipFileBatch, DestroyContext)
     batch_map.destroyContext(handle);
 }
 
+TEST_F(HipFileBatch, DestroyContextRemovesHandle)
+{
+    hipFileBatchHandle_t handle = batch_map.createContext(1);
+
+    batch_map.destroyContext(handle);
+
+    ASSERT_THROW(batch_map.get(handle), InvalidBatchHandle);
+}
+
+TEST_F(HipFileBatch, DestroyContextPreservesOtherContexts)
+{
+    hipFileBatchHandle_t handle1 = batch_map.createContext(1);
+    hipFileBatchHandle_t handle2 = batch_map.createContext(1);
+
+    batch_map.destroyContext(handle1);
+
+    ASSERT_THROW(batch_map.get(handle1), InvalidBatchHandle);
+    ASSERT_NE(batch_map.get(handle2), nullptr);
+}
+
 TEST_F(HipFileBatch, DestroyMissingContext)
 {
     ASSERT_THROW(batch_map.destroyContext(reinterpret_cast<hipFileBatchHandle_t>(1)), InvalidBatchHandle);
@@ -318,6 +390,15 @@ TEST_F(HipFileBatch, GetDestroyedContext)
     hipFileBatchHandle_t handle = batch_map.createContext(1);
     batch_map.destroyContext(handle);
     ASSERT_THROW(batch_map.get(handle), InvalidBatchHandle);
+}
+
+TEST_F(HipFileBatch, DestroyAlreadyDestroyedContext)
+{
+    hipFileBatchHandle_t handle = batch_map.createContext(1);
+
+    batch_map.destroyContext(handle);
+
+    ASSERT_THROW(batch_map.destroyContext(handle), InvalidBatchHandle);
 }
 
 struct HipFileBatchContext : public HipFileUnopened {
@@ -358,7 +439,9 @@ struct HipFileBatchContext : public HipFileUnopened {
 
     void TearDown() override
     {
-        batch_map.destroyContext(_context.get());
+        if (_context) {
+            batch_map.destroyContext(_context.get());
+        }
         mock_thread_pool.reset();
         mock_driver_state.reset();
     }
@@ -609,6 +692,201 @@ TEST_F(HipFileBatchContext, GetStatusZeroTimeoutScansOutstandingOperationsOnce)
     ASSERT_EQ(event.cookie, &cookie);
     ASSERT_EQ(event.status, hipFileComplete);
     ASSERT_EQ(event.ret, 4);
+}
+
+TEST_F(HipFileBatchContext, CancelOperationsEmptySucceeds)
+{
+    ASSERT_NE(context(), nullptr);
+
+    ASSERT_NO_THROW(context()->cancel_operations());
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 0);
+}
+
+TEST_F(HipFileBatchContext, CancelOperationsCancelsPendingOperations)
+{
+    ASSERT_NE(context(), nullptr);
+
+    int  waiting_cookie{};
+    int  pending_cookie{};
+    auto waiting_op = makeOperation(&waiting_cookie);
+    auto pending_op = makeOperation(&pending_cookie);
+    pending_op->mark_pending();
+    context()->add_operation_for_testing(waiting_op);
+    context()->add_operation_for_testing(pending_op);
+
+    ASSERT_NO_THROW(context()->cancel_operations());
+
+    ASSERT_EQ(waiting_op->get_status(), hipFileWaiting);
+    ASSERT_EQ(pending_op->get_status(), hipFileCanceled);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 2);
+}
+
+TEST_F(HipFileBatchContext, CancelOperationsLeavesTerminalOperationsUnchanged)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto complete_op = makeOperation();
+    auto failed_op   = makeOperation();
+    auto invalid_op  = makeOperation();
+    auto timeout_op  = makeOperation();
+    complete_op->set_status_for_testing(hipFileComplete, 1);
+    failed_op->set_status_for_testing(hipFileFailed, -hipFileInternalError);
+    invalid_op->set_status_for_testing(hipFileInvalid, 0);
+    timeout_op->set_status_for_testing(hipFileTimeout, 0);
+    context()->add_operation_for_testing(complete_op);
+    context()->add_operation_for_testing(failed_op);
+    context()->add_operation_for_testing(invalid_op);
+    context()->add_operation_for_testing(timeout_op);
+
+    ASSERT_NO_THROW(context()->cancel_operations());
+
+    ASSERT_EQ(complete_op->get_status(), hipFileComplete);
+    ASSERT_EQ(failed_op->get_status(), hipFileFailed);
+    ASSERT_EQ(invalid_op->get_status(), hipFileInvalid);
+    ASSERT_EQ(timeout_op->get_status(), hipFileTimeout);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 4);
+}
+
+TEST_F(HipFileBatchContext, CancelOperationsCanceledEventsAreReturnedByGetStatus)
+{
+    ASSERT_NE(context(), nullptr);
+
+    int  waiting_cookie{};
+    int  pending_cookie{};
+    auto waiting_op = makeOperation(&waiting_cookie);
+    auto pending_op = makeOperation(&pending_cookie);
+    pending_op->mark_pending();
+    context()->add_operation_for_testing(waiting_op);
+    context()->add_operation_for_testing(pending_op);
+
+    ASSERT_NO_THROW(context()->cancel_operations());
+
+    unsigned                         nr = 2;
+    std::array<hipFileIOEvents_t, 2> events{};
+    ASSERT_NO_THROW(context()->get_status(1, &nr, events.data(), nullptr));
+
+    ASSERT_EQ(nr, 1);
+    ASSERT_THAT(events[0],
+                AllOf(Field(&hipFileIOEvents_t::cookie, static_cast<void *>(&pending_cookie)),
+                      Field(&hipFileIOEvents_t::status, hipFileCanceled)));
+    ASSERT_EQ(waiting_op->get_status(), hipFileWaiting);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 1);
+}
+
+TEST_F(HipFileBatchContext, CancelOperationsMixedStates)
+{
+    ASSERT_NE(context(), nullptr);
+
+    int  waiting_cookie{};
+    int  pending_cookie{};
+    int  complete_cookie{};
+    int  failed_cookie{};
+    auto waiting_op  = makeOperation(&waiting_cookie);
+    auto pending_op  = makeOperation(&pending_cookie);
+    auto complete_op = makeOperation(&complete_cookie);
+    auto failed_op   = makeOperation(&failed_cookie);
+    pending_op->mark_pending();
+    complete_op->set_status_for_testing(hipFileComplete, 11);
+    failed_op->set_status_for_testing(hipFileFailed, -hipFileInternalError);
+    context()->add_operation_for_testing(waiting_op);
+    context()->add_operation_for_testing(pending_op);
+    context()->add_operation_for_testing(complete_op);
+    context()->add_operation_for_testing(failed_op);
+
+    ASSERT_NO_THROW(context()->cancel_operations());
+
+    unsigned                         nr = 4;
+    std::array<hipFileIOEvents_t, 4> events{};
+    ASSERT_NO_THROW(context()->get_status(3, &nr, events.data(), nullptr));
+
+    ASSERT_EQ(nr, 3);
+    std::vector<hipFileIOEvents_t> returned_events{events.begin(), events.begin() + nr};
+    ASSERT_THAT(returned_events,
+                UnorderedElementsAre(
+                    AllOf(Field(&hipFileIOEvents_t::cookie, static_cast<void *>(&pending_cookie)),
+                          Field(&hipFileIOEvents_t::status, hipFileCanceled)),
+                    AllOf(Field(&hipFileIOEvents_t::cookie, static_cast<void *>(&complete_cookie)),
+                          Field(&hipFileIOEvents_t::status, hipFileComplete),
+                          Field(&hipFileIOEvents_t::ret, static_cast<size_t>(11))),
+                    AllOf(Field(&hipFileIOEvents_t::cookie, static_cast<void *>(&failed_cookie)),
+                          Field(&hipFileIOEvents_t::status, hipFileFailed),
+                          Field(&hipFileIOEvents_t::ret, static_cast<size_t>(-hipFileInternalError)))));
+    ASSERT_EQ(waiting_op->get_status(), hipFileWaiting);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 1);
+}
+
+TEST_F(HipFileBatchContext, CancelOperationsRepeatedIsIdempotent)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto op = makeOperation();
+    op->mark_pending();
+    context()->add_operation_for_testing(op);
+
+    ASSERT_NO_THROW(context()->cancel_operations());
+    ASSERT_NO_THROW(context()->cancel_operations());
+
+    ASSERT_EQ(op->get_status(), hipFileCanceled);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    ASSERT_NO_THROW(context()->get_status(1, &nr, &event, nullptr));
+    ASSERT_EQ(nr, 1);
+
+    nr = 1;
+    ASSERT_NO_THROW(context()->get_status(0, &nr, &event, nullptr));
+    ASSERT_EQ(nr, 0);
+}
+
+TEST_F(HipFileBatchContext, DestroyContextCancelsPendingOperations)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto waiting_op = makeOperation();
+    auto pending_op = makeOperation();
+    pending_op->mark_pending();
+    context()->add_operation_for_testing(waiting_op);
+    context()->add_operation_for_testing(pending_op);
+
+    batch_map.destroyContext(_context.get());
+    _context.reset();
+
+    ASSERT_EQ(waiting_op->get_status(), hipFileWaiting);
+    ASSERT_EQ(pending_op->get_status(), hipFileCanceled);
+}
+
+TEST_F(HipFileBatchContext, DestroyContextDoesNotOverwriteTerminalOperations)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto complete_op = makeOperation();
+    auto failed_op   = makeOperation();
+    complete_op->set_status_for_testing(hipFileComplete, 7);
+    failed_op->set_status_for_testing(hipFileFailed, -hipFileInternalError);
+    context()->add_operation_for_testing(complete_op);
+    context()->add_operation_for_testing(failed_op);
+
+    batch_map.destroyContext(_context.get());
+    _context.reset();
+
+    ASSERT_EQ(complete_op->get_status(), hipFileComplete);
+    ASSERT_EQ(complete_op->get_result(), 7);
+    ASSERT_EQ(failed_op->get_status(), hipFileFailed);
+    ASSERT_EQ(failed_op->get_result(), -hipFileInternalError);
+}
+
+TEST_F(HipFileBatchContext, DestroyContextWithOutstandingOperationsRemovesHandle)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto op = makeOperation();
+    context()->add_operation_for_testing(op);
+    hipFileBatchHandle_t handle = _context.get();
+
+    batch_map.destroyContext(handle);
+    _context.reset();
+
+    ASSERT_THROW(batch_map.get(handle), InvalidBatchHandle);
 }
 
 TEST_F(HipFileBatchContext, SubmitSingleBadBuffer)

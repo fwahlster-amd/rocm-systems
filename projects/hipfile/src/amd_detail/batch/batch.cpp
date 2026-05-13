@@ -337,6 +337,18 @@ BatchContext::get_status(unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp
     collect_terminal_events();
 }
 
+void
+BatchContext::cancel_operations()
+{
+    std::unique_lock<std::shared_mutex> lock{context_mutex};
+
+    for (const auto &op : outstanding_ops) {
+        op->cancel();
+    }
+
+    status_cv.notify_all();
+}
+
 #ifdef AIS_TESTING
 void
 BatchContext::add_operation_for_testing(std::shared_ptr<BatchOperation> op)
