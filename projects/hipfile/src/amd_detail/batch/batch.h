@@ -7,6 +7,7 @@
 
 #include "hipfile.h"
 
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <shared_mutex>
@@ -54,6 +55,14 @@ public:
     /// @brief Return the operation result.
     ssize_t get_result() const;
 
+    /// @brief Return a snapshot of the operation event state.
+    hipFileIOEvents_t event() const;
+
+#ifdef AIS_TESTING
+    /// @brief Set operation state for focused unit tests.
+    void set_status_for_testing(hipFileStatus_t status, ssize_t result);
+#endif
+
 private:
     /// @brief A copy of the params provided by the application.
     /// @internal Keep this listed at the top of BatchOperation.
@@ -82,6 +91,8 @@ public:
     virtual ~IBatchContext()                                                                 = default;
     virtual unsigned get_capacity() const noexcept                                           = 0;
     virtual void     submit_operations(const hipFileIOParams_t *params, unsigned num_params) = 0;
+    virtual void     get_status(unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp,
+                                struct timespec *timeout)                                    = 0;
 };
 
 class BatchContext : public IBatchContext {
@@ -103,12 +114,33 @@ public:
     ///
     void submit_operations(const hipFileIOParams_t *params, const unsigned num_params) override;
 
+    ///
+    /// @brief Poll for completed operations from this Context.
+    /// @param [in]     min_nr  Minimum number of events requested before returning.
+    /// @param [in,out] nr      Input event capacity and output number of events returned.
+    /// @param [out]    iocbp   Event output buffer.
+    /// @param [in]     timeout Maximum amount of time to wait.
+    ///
+    void get_status(unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp,
+                    struct timespec *timeout) override;
+
+#ifdef AIS_TESTING
+    /// @brief Add an operation directly for focused unit tests.
+    void add_operation_for_testing(std::shared_ptr<BatchOperation> op);
+
+    /// @brief Return the number of outstanding operations for focused unit tests.
+    size_t outstanding_count_for_testing() const;
+#endif
+
 private:
     const unsigned capacity;
 
     /// Per-Context mutex to limit access to one caller at a time.
     /// Shared as internally we can be more strategic about concurrent access.
     mutable std::shared_mutex context_mutex;
+
+    /// Wakes callers waiting for operations to become terminal.
+    std::condition_variable_any status_cv;
 
     /// An outstanding operation is a BatchOperation that has been submitted
     /// but is not yet complete or completed but not yet retrieved by the

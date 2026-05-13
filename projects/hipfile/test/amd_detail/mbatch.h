@@ -20,6 +20,9 @@ public:
     MOCK_METHOD(unsigned, get_capacity, (), (const, noexcept, override));
     MOCK_METHOD(void, submit_operations, (const hipFileIOParams_t *params, const unsigned num_params),
                 (override));
+    MOCK_METHOD(void, get_status,
+                (unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp, struct timespec *timeout),
+                (override));
 };
 
 }

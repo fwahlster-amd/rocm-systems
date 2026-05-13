@@ -11,6 +11,7 @@
 #include "state.h"
 #include "thread-pool.h"
 
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <mutex>
@@ -22,6 +23,48 @@
 #include <vector>
 
 namespace hipFile {
+
+namespace {
+
+    bool is_terminal_status(hipFileStatus_t status) noexcept
+    {
+        switch (status) {
+            case hipFileComplete:
+            case hipFileFailed:
+            case hipFileCanceled:
+            case hipFileInvalid:
+            case hipFileTimeout:
+                return true;
+            case hipFileWaiting:
+            case hipFilePending:
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    bool is_zero_timeout(const struct timespec *timeout) noexcept
+    {
+        return timeout != nullptr && timeout->tv_sec == 0 && timeout->tv_nsec == 0;
+    }
+
+    void validate_timeout(const struct timespec *timeout)
+    {
+        if (timeout == nullptr) {
+            return;
+        }
+        if (timeout->tv_sec < 0 || timeout->tv_nsec < 0 || timeout->tv_nsec >= 1000000000L) {
+            throw std::invalid_argument("Invalid batch status timeout");
+        }
+    }
+
+    std::chrono::steady_clock::time_point timeout_deadline(const struct timespec *timeout)
+    {
+        return std::chrono::steady_clock::now() + std::chrono::seconds{timeout->tv_sec} +
+               std::chrono::nanoseconds{timeout->tv_nsec};
+    }
+
+}
 
 BatchOperation::BatchOperation(std::unique_ptr<const hipFileIOParams_t> params,
                                std::shared_ptr<IBuffer> _buffer, std::shared_ptr<IFile> _file)
@@ -118,6 +161,23 @@ BatchOperation::get_result() const
     return ret;
 }
 
+hipFileIOEvents_t
+BatchOperation::event() const
+{
+    std::lock_guard<std::mutex> lock{state_mutex};
+    return {io_params->cookie, status, static_cast<size_t>(ret)};
+}
+
+#ifdef AIS_TESTING
+void
+BatchOperation::set_status_for_testing(hipFileStatus_t new_status, ssize_t result)
+{
+    std::lock_guard<std::mutex> lock{state_mutex};
+    status = new_status;
+    ret    = result;
+}
+#endif
+
 void
 BatchOperation::run()
 {
@@ -201,9 +261,98 @@ BatchContext::submit_operations(const hipFileIOParams_t *params, unsigned num_pa
     outstanding_ops.insert(pending_ops.begin(), pending_ops.end());
 
     for (const auto &op : pending_ops) {
-        Context<IThreadPool>::get()->enqueue([op]() { op->run(); });
+        Context<IThreadPool>::get()->enqueue([this, op]() {
+            op->run();
+            status_cv.notify_all();
+        });
     }
 }
+
+void
+BatchContext::get_status(unsigned min_nr, unsigned *nr, hipFileIOEvents_t *iocbp, struct timespec *timeout)
+{
+    if (nr == nullptr) {
+        throw std::invalid_argument("Number of events cannot be null");
+    }
+    if (*nr > 0 && iocbp == nullptr) {
+        throw std::invalid_argument("Event buffer cannot be null");
+    }
+    if (min_nr > *nr) {
+        throw std::invalid_argument("Minimum event count exceeds event buffer capacity");
+    }
+    validate_timeout(timeout);
+
+    const unsigned event_capacity = *nr;
+    *nr                           = 0;
+
+    std::unique_lock<std::shared_mutex> lock{context_mutex};
+
+    auto terminal_count = [this]() {
+        unsigned count = 0;
+        for (const auto &op : outstanding_ops) {
+            if (is_terminal_status(op->get_status())) {
+                count++;
+            }
+        }
+        return count;
+    };
+
+    auto collect_terminal_events = [this, event_capacity, nr, iocbp]() {
+        unsigned copied = 0;
+        for (auto op_iter = outstanding_ops.begin();
+             op_iter != outstanding_ops.end() && copied < event_capacity;) {
+            hipFileIOEvents_t event = (*op_iter)->event();
+            if (!is_terminal_status(event.status)) {
+                ++op_iter;
+                continue;
+            }
+
+            iocbp[copied++] = event;
+            op_iter         = outstanding_ops.erase(op_iter);
+        }
+        *nr = copied;
+        return copied;
+    };
+
+    if (outstanding_ops.empty() || event_capacity == 0) {
+        return;
+    }
+
+    if (min_nr == 0 || terminal_count() >= min_nr || is_zero_timeout(timeout)) {
+        collect_terminal_events();
+        return;
+    }
+
+    auto ready = [&terminal_count, min_nr, this]() {
+        return terminal_count() >= min_nr || outstanding_ops.empty();
+    };
+
+    if (timeout == nullptr) {
+        status_cv.wait(lock, ready);
+    }
+    else {
+        status_cv.wait_until(lock, timeout_deadline(timeout), ready);
+    }
+
+    collect_terminal_events();
+}
+
+#ifdef AIS_TESTING
+void
+BatchContext::add_operation_for_testing(std::shared_ptr<BatchOperation> op)
+{
+    std::unique_lock<std::shared_mutex> ulock{context_mutex};
+    outstanding_ops.insert(std::move(op));
+    status_cv.notify_all();
+}
+
+size_t
+BatchContext::outstanding_count_for_testing() const
+{
+    std::shared_lock<std::shared_mutex> slock{context_mutex};
+    return outstanding_ops.size();
+}
+#endif
 
 void
 BatchContextMap::clear()

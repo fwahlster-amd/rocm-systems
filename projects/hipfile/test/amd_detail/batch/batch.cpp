@@ -24,10 +24,13 @@
 #include <utility>
 
 using ::testing::_;
+using ::testing::AllOf;
 using ::testing::DoDefault;
+using ::testing::Field;
 using ::testing::Return;
 using ::testing::StrictMock;
 using ::testing::Throw;
+using ::testing::UnorderedElementsAre;
 
 using namespace hipFile;
 
@@ -114,6 +117,61 @@ TEST_F(HipFileBatch, RunCanceledOperationReturnsImmediately)
 
     ASSERT_EQ(op.get_status(), hipFileCanceled);
     ASSERT_EQ(op.get_result(), 0);
+}
+
+TEST_F(HipFileBatch, OperationEventStartsWaiting)
+{
+    int cookie{};
+    io_params->cookie = &cookie;
+    BatchOperation op = BatchOperation{std::move(io_params), default_mock_buffer, default_mock_file};
+
+    hipFileIOEvents_t event = op.event();
+
+    ASSERT_EQ(event.cookie, &cookie);
+    ASSERT_EQ(event.status, hipFileWaiting);
+    ASSERT_EQ(event.ret, 0);
+}
+
+TEST_F(HipFileBatch, OperationEventUsesCopiedCookie)
+{
+    int               original_cookie{};
+    int               modified_cookie{};
+    hipFileIOParams_t source_params = *io_params;
+    source_params.cookie            = &original_cookie;
+
+    auto           params = std::make_unique<const hipFileIOParams_t>(source_params);
+    BatchOperation op     = BatchOperation{std::move(params), default_mock_buffer, default_mock_file};
+    source_params.cookie  = &modified_cookie;
+
+    ASSERT_EQ(op.event().cookie, &original_cookie);
+}
+
+TEST_F(HipFileBatch, OperationEventReportsCompletedResult)
+{
+    int cookie{};
+    io_params->cookie = &cookie;
+    BatchOperation op = BatchOperation{std::move(io_params), default_mock_buffer, default_mock_file};
+
+    op.set_status_for_testing(hipFileComplete, 17);
+
+    hipFileIOEvents_t event = op.event();
+    ASSERT_EQ(event.cookie, &cookie);
+    ASSERT_EQ(event.status, hipFileComplete);
+    ASSERT_EQ(event.ret, 17);
+}
+
+TEST_F(HipFileBatch, OperationEventReportsFailedResult)
+{
+    int cookie{};
+    io_params->cookie = &cookie;
+    BatchOperation op = BatchOperation{std::move(io_params), default_mock_buffer, default_mock_file};
+
+    op.set_status_for_testing(hipFileFailed, -hipFileInternalError);
+
+    hipFileIOEvents_t event = op.event();
+    ASSERT_EQ(event.cookie, &cookie);
+    ASSERT_EQ(event.status, hipFileFailed);
+    ASSERT_EQ(event.ret, static_cast<size_t>(-hipFileInternalError));
 }
 
 TEST_F(HipFileBatch, CreateOperationBadBuffer)
@@ -304,6 +362,18 @@ struct HipFileBatchContext : public HipFileUnopened {
         mock_thread_pool.reset();
         mock_driver_state.reset();
     }
+
+    std::shared_ptr<BatchContext> context()
+    {
+        return std::dynamic_pointer_cast<BatchContext>(_context);
+    }
+
+    std::shared_ptr<BatchOperation> makeOperation(void *cookie = nullptr)
+    {
+        auto params    = std::make_unique<hipFileIOParams_t>(io_params);
+        params->cookie = cookie;
+        return std::make_shared<BatchOperation>(std::move(params), default_mock_buffer, default_mock_file);
+    }
 };
 
 TEST_F(HipFileBatchContext, SubmitSingleGoodOp)
@@ -390,6 +460,155 @@ TEST_F(HipFileBatchContext, SubmitBatchWithBadOpDoesNotRecordGoodOps)
     EXPECT_CALL(*mock_thread_pool, enqueue(_)).Times(params.size());
 
     ASSERT_NO_THROW(_context->submit_operations(params.data(), params.size()));
+}
+
+TEST_F(HipFileBatchContext, GetStatusNoOutstandingReturnsImmediately)
+{
+    ASSERT_NE(context(), nullptr);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    struct timespec   timeout {
+        1, 0
+    };
+
+    ASSERT_NO_THROW(context()->get_status(1, &nr, &event, &timeout));
+    ASSERT_EQ(nr, 0);
+}
+
+TEST_F(HipFileBatchContext, GetStatusNoOutstandingZeroCapacityReturnsImmediately)
+{
+    ASSERT_NE(context(), nullptr);
+
+    unsigned nr = 0;
+
+    ASSERT_NO_THROW(context()->get_status(0, &nr, nullptr, nullptr));
+    ASSERT_EQ(nr, 0);
+}
+
+TEST_F(HipFileBatchContext, GetStatusReturnsCompletedOperationAndConsumesIt)
+{
+    ASSERT_NE(context(), nullptr);
+
+    int  cookie{};
+    auto op = makeOperation(&cookie);
+    op->set_status_for_testing(hipFileComplete, 9);
+    context()->add_operation_for_testing(op);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    ASSERT_NO_THROW(context()->get_status(1, &nr, &event, nullptr));
+
+    ASSERT_EQ(nr, 1);
+    ASSERT_EQ(event.cookie, &cookie);
+    ASSERT_EQ(event.status, hipFileComplete);
+    ASSERT_EQ(event.ret, 9);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 0);
+}
+
+TEST_F(HipFileBatchContext, GetStatusReturnsFailedAndCanceledOperations)
+{
+    ASSERT_NE(context(), nullptr);
+
+    int  failed_cookie{};
+    int  canceled_cookie{};
+    auto failed_op   = makeOperation(&failed_cookie);
+    auto canceled_op = makeOperation(&canceled_cookie);
+    failed_op->set_status_for_testing(hipFileFailed, -hipFileInternalError);
+    canceled_op->mark_pending();
+    canceled_op->cancel();
+    context()->add_operation_for_testing(failed_op);
+    context()->add_operation_for_testing(canceled_op);
+
+    unsigned                         nr = 2;
+    std::array<hipFileIOEvents_t, 2> events{};
+    ASSERT_NO_THROW(context()->get_status(2, &nr, events.data(), nullptr));
+
+    ASSERT_EQ(nr, 2);
+    ASSERT_THAT(events, UnorderedElementsAre(
+                            AllOf(Field(&hipFileIOEvents_t::cookie, static_cast<void *>(&failed_cookie)),
+                                  Field(&hipFileIOEvents_t::status, hipFileFailed),
+                                  Field(&hipFileIOEvents_t::ret, static_cast<size_t>(-hipFileInternalError))),
+                            AllOf(Field(&hipFileIOEvents_t::cookie, static_cast<void *>(&canceled_cookie)),
+                                  Field(&hipFileIOEvents_t::status, hipFileCanceled))));
+}
+
+TEST_F(HipFileBatchContext, GetStatusDoesNotReturnPendingOperation)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto op = makeOperation();
+    op->mark_pending();
+    context()->add_operation_for_testing(op);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    struct timespec   timeout {
+        0, 0
+    };
+    ASSERT_NO_THROW(context()->get_status(0, &nr, &event, &timeout));
+
+    ASSERT_EQ(nr, 0);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 1);
+}
+
+TEST_F(HipFileBatchContext, GetStatusReturnsAtMostCallerCapacity)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto op1 = makeOperation();
+    auto op2 = makeOperation();
+    op1->set_status_for_testing(hipFileComplete, 1);
+    op2->set_status_for_testing(hipFileComplete, 2);
+    context()->add_operation_for_testing(op1);
+    context()->add_operation_for_testing(op2);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    ASSERT_NO_THROW(context()->get_status(0, &nr, &event, nullptr));
+
+    ASSERT_EQ(nr, 1);
+    ASSERT_EQ(context()->outstanding_count_for_testing(), 1);
+}
+
+TEST_F(HipFileBatchContext, GetStatusDoesNotReturnSameOperationTwice)
+{
+    ASSERT_NE(context(), nullptr);
+
+    auto op = makeOperation();
+    op->set_status_for_testing(hipFileComplete, 3);
+    context()->add_operation_for_testing(op);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    ASSERT_NO_THROW(context()->get_status(1, &nr, &event, nullptr));
+    ASSERT_EQ(nr, 1);
+
+    nr = 1;
+    ASSERT_NO_THROW(context()->get_status(0, &nr, &event, nullptr));
+    ASSERT_EQ(nr, 0);
+}
+
+TEST_F(HipFileBatchContext, GetStatusZeroTimeoutScansOutstandingOperationsOnce)
+{
+    ASSERT_NE(context(), nullptr);
+
+    int  cookie{};
+    auto op = makeOperation(&cookie);
+    op->set_status_for_testing(hipFileComplete, 4);
+    context()->add_operation_for_testing(op);
+
+    unsigned          nr = 1;
+    hipFileIOEvents_t event{};
+    struct timespec   timeout {
+        0, 0
+    };
+    ASSERT_NO_THROW(context()->get_status(1, &nr, &event, &timeout));
+
+    ASSERT_EQ(nr, 1);
+    ASSERT_EQ(event.cookie, &cookie);
+    ASSERT_EQ(event.status, hipFileComplete);
+    ASSERT_EQ(event.ret, 4);
 }
 
 TEST_F(HipFileBatchContext, SubmitSingleBadBuffer)
