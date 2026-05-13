@@ -9,6 +9,7 @@
 #include "file.h"
 #include "hipfile.h"
 #include "state.h"
+#include "thread-pool.h"
 
 #include <cstddef>
 #include <memory>
@@ -83,6 +84,70 @@ BatchOperation::BatchOperation(std::unique_ptr<const hipFileIOParams_t> params,
     }
 }
 
+void
+BatchOperation::mark_pending()
+{
+    std::lock_guard<std::mutex> lock{state_mutex};
+
+    if (status == hipFileWaiting) {
+        status = hipFilePending;
+    }
+}
+
+void
+BatchOperation::cancel()
+{
+    std::lock_guard<std::mutex> lock{state_mutex};
+
+    if (status == hipFilePending) {
+        status = hipFileCanceled;
+    }
+}
+
+hipFileStatus_t
+BatchOperation::get_status() const
+{
+    std::lock_guard<std::mutex> lock{state_mutex};
+    return status;
+}
+
+ssize_t
+BatchOperation::get_result() const
+{
+    std::lock_guard<std::mutex> lock{state_mutex};
+    return ret;
+}
+
+void
+BatchOperation::run()
+{
+    {
+        std::lock_guard<std::mutex> lock{state_mutex};
+        if (status == hipFileCanceled) {
+            return;
+        }
+        if (status == hipFileWaiting) {
+            status = hipFilePending;
+        }
+    }
+
+    ssize_t result = 0;
+    if (io_params->opcode == hipFileBatchRead) {
+        result = hipFileRead(io_params->fh, io_params->u.batch.devPtr_base, io_params->u.batch.size,
+                             io_params->u.batch.file_offset, io_params->u.batch.devPtr_offset);
+    }
+    else {
+        result = hipFileWrite(io_params->fh, io_params->u.batch.devPtr_base, io_params->u.batch.size,
+                              io_params->u.batch.file_offset, io_params->u.batch.devPtr_offset);
+    }
+
+    std::lock_guard<std::mutex> lock{state_mutex};
+    ret = result;
+    if (status != hipFileCanceled) {
+        status = result >= 0 ? hipFileComplete : hipFileFailed;
+    }
+}
+
 BatchContext::BatchContext(unsigned _capacity) : capacity{_capacity}
 {
     if (_capacity == 0) {
@@ -130,7 +195,14 @@ BatchContext::submit_operations(const hipFileIOParams_t *params, unsigned num_pa
     }
 
     // All submitted operations look valid at this point. Accept them.
+    for (const auto &op : pending_ops) {
+        op->mark_pending();
+    }
     outstanding_ops.insert(pending_ops.begin(), pending_ops.end());
+
+    for (const auto &op : pending_ops) {
+        Context<IThreadPool>::get()->enqueue([op]() { op->run(); });
+    }
 }
 
 void

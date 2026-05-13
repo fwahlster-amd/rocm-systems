@@ -8,6 +8,7 @@
 #include "hipfile.h"
 
 #include <memory>
+#include <mutex>
 #include <shared_mutex>
 #include <stdexcept>
 #include <unordered_map>
@@ -38,6 +39,21 @@ public:
     BatchOperation(std::unique_ptr<const hipFileIOParams_t> params, std::shared_ptr<IBuffer> buffer,
                    std::shared_ptr<IFile> file);
 
+    /// @brief Mark the operation as accepted and ready to run.
+    void mark_pending();
+
+    /// @brief Cancel the operation if it is pending.
+    void cancel();
+
+    /// @brief Execute the operation.
+    void run();
+
+    /// @brief Return the current operation status.
+    hipFileStatus_t get_status() const;
+
+    /// @brief Return the operation result.
+    ssize_t get_result() const;
+
 private:
     /// @brief A copy of the params provided by the application.
     /// @internal Keep this listed at the top of BatchOperation.
@@ -48,6 +64,15 @@ private:
 
     /// @brief A reference to the specified registered File.
     const std::shared_ptr<const IFile> file;
+
+    /// @brief Protects status and ret.
+    mutable std::mutex state_mutex;
+
+    /// @brief Current operation status.
+    hipFileStatus_t status{hipFileWaiting};
+
+    /// @brief Result returned by hipFileRead or hipFileWrite.
+    ssize_t ret{0};
 };
 
 class IBatchContext {
