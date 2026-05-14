@@ -396,10 +396,8 @@ BatchContextMap::destroyContext(hipFileBatchHandle_t handle)
     if (context == active_contexts.end()) {
         throw InvalidBatchHandle();
     }
-    // TODO: Check for outstanding operations.
-    // TODO: Attempt to cancel any outstanding operations.
-    // TODO: Determine if we return unconditionally or require
-    //       outstanding ops to terminate first.
+
+    context->second->cancel_operations();
     active_contexts.erase(handle);
 }
 
