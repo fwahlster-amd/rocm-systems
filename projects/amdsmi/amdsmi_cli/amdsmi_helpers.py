@@ -1716,7 +1716,10 @@ class AMDSMIHelpers:
         if user_input in ["y", "Y", "yes", "Yes", "YES"]:
             return
         else:
-            sys.exit("Confirmation not given. Exiting without setting value")
+            msg = "Confirmation not given. Exiting without setting value."
+            print(msg)
+            outputformat = self.get_output_format()
+            raise amdsmi_cli_exceptions.AmdSmiInvalidCommandException("", outputformat, msg)
 
     def confirm_changing_memory_partition_gpu_reload_warning(self, auto_respond=False):
         """Print the warning for running outside of specification and prompt user to accept the terms.
@@ -1755,8 +1758,10 @@ class AMDSMIHelpers:
             print("")
             return
         else:
-            print("Confirmation not given. Exiting without setting value")
-            sys.exit(201)
+            msg = "Confirmation not given. Exiting without setting value."
+            print(msg)
+            outputformat = self.get_output_format()
+            raise amdsmi_cli_exceptions.AmdSmiInvalidCommandException("", outputformat, msg)
 
     def is_valid_profile(self, profile):
         profile_presets = (

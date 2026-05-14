@@ -8636,7 +8636,7 @@ class AMDSMICommands:
                             f"Failed to fetch available profiles: {get_error.get_error_info()}"
                         )
 
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set power profile to {args.profile}"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set power profile to {args.profile}."
                     self.logger.store_output(args.gpu, "profile", error_msg)
                     print(f"\nAvailable Power Profiles:\n\t{available_str}\n")
                     self.logger.print_output()
@@ -8654,7 +8654,7 @@ class AMDSMICommands:
                 except amdsmi_exception.AmdSmiLibraryException as e:
                     if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                         raise PermissionError("Command requires elevation") from e
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to enable performance determinism and set GFX clock frequency to {args.perf_determinism} MHz"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to enable performance determinism and set GFX clock frequency to {args.perf_determinism} MHz."
                     self.logger.store_output(args.gpu, "perfdeterminism", error_msg)
                     self.logger.print_output()
                     self.logger.clear_multiple_devices_output()
@@ -8739,9 +8739,9 @@ class AMDSMICommands:
                             f"\n[AMDSMI_STATUS_SETTING_UNAVAILABLE] Please check amd-smi partition --memory --accelerator for available profiles.\n"
                             "Users may need to switch memory partition to another mode in order to enable the desired accelerator partition.\n"
                         )
-                        error_msg = f"[AMDSMI_STATUS_SETTING_UNAVAILABLE] Unable to set accelerator partition to {args.compute_partition} on {gpu_string}"
+                        error_msg = f"[AMDSMI_STATUS_SETTING_UNAVAILABLE] Unable to set accelerator partition to {args.compute_partition} on {gpu_string}."
                     else:
-                        error_msg = f"Unable to set accelerator partition to {args.compute_partition} on {gpu_string}"
+                        error_msg = f"Unable to set accelerator partition to {args.compute_partition} on {gpu_string}."
 
                     self.logger.store_output(args.gpu, "accelerator_partition", error_msg)
                     self.logger.print_output()
@@ -8828,7 +8828,7 @@ class AMDSMICommands:
                             )  # Remove trailing comma and space
                         print(f"Valid SOC P-State Policies: [{policy_string}]\n")
 
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set soc pstate dpm policy to {args.soc_pstate}"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set soc pstate dpm policy to {args.soc_pstate}."
                     self.logger.store_output(args.gpu, "socpstate", error_msg)
                     self.logger.print_output()
                     self.logger.clear_multiple_devices_output()
@@ -8863,7 +8863,7 @@ class AMDSMICommands:
                                 ", "
                             )  # Remove trailing comma and space
                         print(f"Valid XGMI PLPD Policies: [{policy_string}]\n")
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set XGMI per-link power down policy to {args.xgmi_plpd}"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set XGMI per-link power down policy to {args.xgmi_plpd}."
                     self.logger.store_output(args.gpu, "xgmiplpd", error_msg)
                     self.logger.print_output()
                     self.logger.clear_multiple_devices_output()
@@ -9059,7 +9059,7 @@ class AMDSMICommands:
                 except amdsmi_exception.AmdSmiLibraryException as e:
                     if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                         raise PermissionError("Command requires elevation") from e
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set ptl status to {args.ptl_status}"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set ptl status to {args.ptl_status}."
                     self.logger.store_output(args.gpu, "ptlstatus", error_msg)
                     self.logger.print_output()
                     self.logger.clear_multiple_devices_output()
@@ -9090,7 +9090,7 @@ class AMDSMICommands:
                 except amdsmi_exception.AmdSmiLibraryException as e:
                     if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                         raise PermissionError("Command requires elevation") from e
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set PTL format to {requested_str}"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set PTL format to {requested_str}."
                     self.logger.store_output(args.gpu, "ptlformat", error_msg)
                     self.logger.print_output()
                     self.logger.clear_multiple_devices_output()
@@ -9186,7 +9186,7 @@ class AMDSMICommands:
                     and lim_type == "min"
                     and clk_type == "mclk"
                 ):
-                    error_msg = f"Setting mclk min is not supported"
+                    error_msg = f"Setting mclk min is not supported."
                     logging.debug(error_msg)
                 else:
                     logging.debug(
@@ -9194,7 +9194,7 @@ class AMDSMICommands:
                         gpu_id,
                         e.get_error_info(),
                     )
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to change {args.clk_limit.lim_type} of {args.clk_limit.clk_type} to {args.clk_limit.val} MHz"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to change {args.clk_limit.lim_type} of {args.clk_limit.clk_type} to {args.clk_limit.val} MHz."
                 self.logger.store_output(args.gpu, "clk_limit", error_msg)
                 self.logger.print_output()
                 self.logger.clear_multiple_devices_output()
@@ -9213,11 +9213,11 @@ class AMDSMICommands:
                     and lim_type == "min"
                     and clk_type == "mclk"
                 ):
-                    error_msg = f"Setting mclk min is not supported"
+                    error_msg = f"Setting mclk min is not supported."
                     logging.debug(error_msg)
                     self.logger.store_output(args.gpu, "clk_limit", error_msg)
                 else:
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set {args.clk_limit.lim_type} of {args.clk_limit.clk_type} to {args.clk_limit.val} MHz"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set {args.clk_limit.lim_type} of {args.clk_limit.clk_type} to {args.clk_limit.val} MHz."
                     self.logger.store_output(args.gpu, "clk_limit", error_msg)
                 self.logger.print_output()
                 self.logger.clear_multiple_devices_output()
@@ -9252,7 +9252,7 @@ class AMDSMICommands:
             except amdsmi_exception.AmdSmiLibraryException as e:
                 if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                     raise PermissionError("Command requires elevation") from e
-                error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set process isolation to {status_string}"
+                error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set process isolation to {status_string}."
                 self.logger.store_output(args.gpu, "process_isolation", error_msg)
                 self.logger.print_output()
                 self.logger.clear_multiple_devices_output()
@@ -9327,7 +9327,7 @@ class AMDSMICommands:
                     error_msg = 'Not supported: UMA carveout is only available on APUs whose VBIOS exposes the ATCS "Set UMA Allocation Size" function.'
                     self.logger.store_output(args.gpu, "mem_carveout", error_msg)
                 else:
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set VRAM carveout to index {args.mem_carveout}"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to set VRAM carveout to index {args.mem_carveout}."
                     self.logger.store_output(args.gpu, "mem_carveout", error_msg)
                 self.logger.print_output()
                 self.logger.clear_multiple_devices_output()
@@ -9853,7 +9853,7 @@ class AMDSMICommands:
             except amdsmi_exception.AmdSmiLibraryException as e:
                 if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                     raise PermissionError("Command requires elevation") from e
-                error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset GTT"
+                error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset GTT."
                 self.logger.output["reset_gtt"] = error_msg
                 self.logger.print_output()
                 output_format = self.helpers.get_output_format()
@@ -9954,7 +9954,7 @@ class AMDSMICommands:
                             == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM
                         ):
                             raise PermissionError("Command requires elevation") from e
-                        error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset GPU"
+                        error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset GPU."
                         self.logger.store_output(args.gpu, "gpu_reset", error_msg)
                         self.logger.print_output()
                         self.logger.clear_multiple_devices_output()
@@ -9997,7 +9997,7 @@ class AMDSMICommands:
                     exc = e
                     if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                         raise PermissionError("Command requires elevation") from e
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset performance level to auto"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset performance level to auto."
                     reset_clocks_results["clocks"] = error_msg
                     logging.debug(
                         "Failed to reset perf level on gpu %s | %s", gpu_id, e.get_error_info()
@@ -10014,7 +10014,7 @@ class AMDSMICommands:
                     exc = e
                     if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                         raise PermissionError("Command requires elevation") from e
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset performance level to auto"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset performance level to auto."
                     reset_clocks_results["performance"] = error_msg
                     logging.debug(
                         "Failed to reset perf level on gpu %s | %s", gpu_id, e.get_error_info()
@@ -10062,7 +10062,7 @@ class AMDSMICommands:
                     exc = e
                     if e.get_error_code() == amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_NO_PERM:
                         raise PermissionError("Command requires elevation") from e
-                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset Power Profile to default (bootup default)"
+                    error_msg = f"[{e.get_error_info(detailed=False)}] Unable to reset Power Profile to default (bootup default)."
                     reset_profile_results["power_profile"] = error_msg
                     logging.debug(
                         "Failed to reset power profile on gpu %s | %s", gpu_id, e.get_error_info()

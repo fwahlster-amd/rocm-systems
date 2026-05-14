@@ -714,7 +714,12 @@ class AMDSMIParser(argparse.ArgumentParser):
                             .lower()
                         )
                     except Exception:
-                        sys.exit("Confirmation not given. Exiting without setting value")
+                        msg = "Confirmation not given. Exiting without setting value."
+                        print(msg)
+                        outputformat = self.get_output_format()
+                        raise amdsmi_cli_exceptions.AmdSmiInvalidCommandException(
+                            "", outputformat, msg
+                        )
                     if resp in ("a", "append"):
                         setattr(args, self.dest, path)
                         return
