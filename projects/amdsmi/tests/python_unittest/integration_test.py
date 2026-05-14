@@ -1612,7 +1612,7 @@ if __name__ == "__main__":
     #       self.assertEqual(e.get_error_code(), amdsmi.AmdSmiStatus.AMDSMI_STATUS_NOT_SUPPORTED)
     # ---------------------------------------------------------------------------
 
-    runner = unittest.TextTestRunner(verbosity=common.make_runner_verbosity(verbose))
+    runner = common.GTestSummaryRunner(verbosity=common.make_runner_verbosity(verbose))
 
     common.expand_glob_k_arg(globals())
     unittest.main(testRunner=runner)

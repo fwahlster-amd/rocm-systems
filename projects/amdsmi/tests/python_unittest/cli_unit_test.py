@@ -1416,6 +1416,6 @@ if __name__ == "__main__":
         print("Please relaunch with elevated privileges.\n")
         sys.exit(1)
 
-    runner = unittest.TextTestRunner(verbosity=verbose)
+    runner = common.GTestSummaryRunner(verbosity=verbose)
     unittest.main(testRunner=runner)
     sys.exit(0)
