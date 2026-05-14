@@ -7,7 +7,8 @@
 
 #include "nccl_gin.h"
 #include "proxy.h"
-#include "os.h"
+//#include "os.h" // replaced by nccl_merge_stubs.h during NCCL->RCCL merge
+#include "nccl_merge_stubs.h"
 
 static ncclGin_v11_t* ncclGin_v11;
 static ncclGin_t ncclGin;
@@ -82,9 +83,12 @@ static ncclResult_t ncclGin_getProperties(int dev, ncclNetProperties_t* props) {
   props->maxP2pBytes = props_v11.maxP2pBytes;
   props->maxCollBytes = props_v11.maxCollBytes;
   props->maxMultiRequestSize = props_v11.maxMultiRequestSize;
+// Temporary disabled, as NET plugin interface is not aligned 
+#if 0
   // Undefined to be ignore in NCCL core
   props->railId = NCCL_NET_ID_UNDEF;
   props->planeId = NCCL_NET_ID_UNDEF;
+#endif
   return ncclSuccess;
 }
 

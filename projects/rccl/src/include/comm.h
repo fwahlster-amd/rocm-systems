@@ -29,6 +29,7 @@
 #include "recorder.h"
 #include "ipc_init_detail.h"
 #include "mem_manager.h"
+#include "rma/rma.h"
 
 #ifdef ENABLE_ROCSHMEM
 #include <rocshmem/rocshmem.hpp>
@@ -157,6 +158,9 @@ struct ncclSharedResources {
 
   /* proxy related shared res */
   struct ncclProxyState* proxyState;
+
+  // GIN state
+  struct ncclGinState ginState;
 };
 
  /**
@@ -515,7 +519,10 @@ struct ncclComm {
 
   ncclNet_t* ncclNet;
   void* netContext;
+  void* ginContext;
+  void* rmaGinContext;
   int netPluginIndex;
+  int ginPluginIndex;
   int ncclNetVer;
   ncclNetDeviceType netDeviceType;
   ncclCollNet_t* ncclCollNet;
@@ -762,6 +769,9 @@ struct ncclComm {
   void* profilerContext;
   uint64_t seqNumber[NCCL_NUM_FUNCTIONS];
   struct ncclProfilerProxy profiler;
+
+  // RMA state
+  struct ncclRmaState rmaState;
 
   // CE Collective
   struct ncclCeColl ceColl;

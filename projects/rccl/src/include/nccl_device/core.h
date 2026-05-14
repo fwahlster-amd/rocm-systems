@@ -72,6 +72,12 @@ struct ncclDevCommRequirements {
   bool lsaMultimem; // Enable multimem on lsa team
 
   int lsaBarrierCount;
+  int ginContextCount;
+  int ginSignalCount;
+  int ginCounterCount;
+  bool ginExclusiveContexts;
+  int ginQueueDepth;
+  int ginTrafficClass;
 };
 
 struct ncclDevResourceRequirements {

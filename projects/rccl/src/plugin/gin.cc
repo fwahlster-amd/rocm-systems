@@ -14,6 +14,8 @@
 #include <string.h>
 #include <errno.h>
 #include <mutex>
+//Temporary stubs
+#include "nccl_merge_stubs.h"
 
 typedef ncclGin_t* getNcclGin_t(void* ginPluginLib);
 
