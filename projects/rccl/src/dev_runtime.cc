@@ -20,6 +20,7 @@ struct ncclDevrMemory {
   CUmemGenericAllocationHandle memHandle;
   size_t size;
   size_t bigOffset; // offset in big VA space
+  ncclGinWindow_t rmaDevWins[NCCL_GIN_MAX_CONNECTIONS];
 };
 
 struct ncclDevrWindowSorted {
@@ -948,6 +949,17 @@ ncclResult_t ncclDevrGetLsaRankPtr(struct ncclComm* comm, struct ncclDevrWindow*
   // Calculate the address with offset for the specified lsa rank
   *outPtr = (void*)((uintptr_t)devr->lsaFlatBase + lsaRank * devr->bigSize + winHost->bigOffset + offset);
   return ncclSuccess;
+}
+
+// Get the RMA device window handle for a specific context
+ncclGinWindow_t ncclDevrGetRmaDevWin(struct ncclDevrWindow* winHost, int ctx) {
+  if (winHost == nullptr || winHost->memory == nullptr) {
+    return nullptr;
+  }
+  if (ctx < 0 || ctx >= NCCL_GIN_MAX_CONNECTIONS) {
+    return nullptr;
+  }
+  return winHost->memory->rmaDevWins[ctx];
 }
 
 // Get the multicast address for a given team

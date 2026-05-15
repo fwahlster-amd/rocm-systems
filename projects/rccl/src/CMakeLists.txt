@@ -237,6 +237,7 @@ set(SRC_FILES
   include/gin/gin_host_proxy.h
   include/gin/gin_host_win_stub.h
   include/nccl_device/gin/gin_device_host_common.h
+  include/nccl_device/gin/proxy/gin_proxy_device_host_common.h
   include/plugin/net/net_v6.h
   include/plugin/net/net_v7.h
   include/plugin/net/net_v8.h
