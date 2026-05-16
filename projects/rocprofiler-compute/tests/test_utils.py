@@ -90,6 +90,7 @@ def create_minimal_rocpd_counter_db(db_path):
     conn.commit()
     conn.close()
 
+
 ##################################################
 ##          Generated tests                     ##
 ##################################################

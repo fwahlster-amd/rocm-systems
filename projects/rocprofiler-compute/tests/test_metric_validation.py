@@ -54,7 +54,7 @@ VALIDATE_METRICS = {
         ],
         "MI350": [
             {
-                "profile_metric_id": ["4.1.11"],
+                "profile_metric_id": ["4.1.10"],
                 "expected_values": [4096.0],
                 "tolerance": 0.10,
                 "get_actual_data": {
@@ -68,14 +68,7 @@ VALIDATE_METRICS = {
         ],
         # Ignore warmup dispatch
         # Collect roofline block
-        "profile_options": [
-            "--format-rocprof-output",
-            "csv",
-            "-d",
-            "2-1001",
-            "-b",
-            "4",
-        ],
+        "profile_options": ["-d", "2-1001", "-b", "4"],
         "roof": True,
     }
 }

@@ -48,7 +48,7 @@ def test_L1_cache_counters(
 
     # set up two apps: sequential and random access
     app_names = ["vseq", "vrand"]
-    options = ["--format-rocprof-output", "csv", "-b", "16"]
+    options = ["-b", "16"]
 
     result = {}
     metrics = ["Read Req", "Write Req", "Cache Hit Rate"]

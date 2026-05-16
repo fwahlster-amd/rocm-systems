@@ -2233,8 +2233,7 @@ def test_join_prof_rocpd_falls_back_to_results_csv(tmp_path):
     (tmp_path / "profiling_config.yaml").write_text("format_rocprof_output: rocpd\n")
     results_file = tmp_path / "results_pmc_perf_0.csv"
     results_file.write_text(
-        "Dispatch_ID,Kernel_Name,Counter_Name,Counter_Value\n"
-        "0,kernel_a,SQ_WAVES,10\n"
+        "Dispatch_ID,Kernel_Name,Counter_Name,Counter_Value\n0,kernel_a,SQ_WAVES,10\n"
     )
 
     inst = cli_analysis.__new__(cli_analysis)

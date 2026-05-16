@@ -867,18 +867,36 @@ def normalize_rocpd_counter_dataframe(df: pd.DataFrame) -> pd.DataFrame:
         return df
 
     normalized_df = df.copy()
-    dispatch_group_columns = [
+    kernel_group_columns = [
         "PID",
         "Kernel_Name",
         "Grid_Size",
         "Workgroup_Size",
         "LDS_Per_Workgroup",
+    ]
+    dispatch_unique_columns = kernel_group_columns + [
         "Start_Timestamp",
         "End_Timestamp",
     ]
-    normalized_df["Dispatch_ID"] = normalized_df.groupby(
-        dispatch_group_columns, sort=False, dropna=False
-    ).ngroup()
+
+    # One representative entry per unique dispatch, ordered so the i-th
+    # invocation by Start_Timestamp in each pass aligns with the i-th in
+    # every other pass for the same kernel group.
+    unique_dispatches = (
+        normalized_df[dispatch_unique_columns]
+        .drop_duplicates()
+        .sort_values(by=dispatch_unique_columns)
+        .reset_index(drop=True)
+    )
+    unique_dispatches["Dispatch_ID"] = unique_dispatches.groupby(
+        kernel_group_columns, sort=False, dropna=False
+    ).cumcount()
+
+    normalized_df = normalized_df.drop(columns=["Dispatch_ID"], errors="ignore")
+    normalized_df = normalized_df.merge(
+        unique_dispatches, on=dispatch_unique_columns, how="left"
+    )
+
     normalized_df["Kernel_ID"] = normalized_df.groupby(
         ["Kernel_Name", "Grid_Size", "Workgroup_Size", "LDS_Per_Workgroup"],
         sort=False,

@@ -1,8 +1,8 @@
 # Copyright (c) Advanced Micro Devices, Inc.
 # SPDX-License-Identifier:  MIT
 
-import inspect
 import importlib
+import inspect
 import os
 import re
 import shutil
