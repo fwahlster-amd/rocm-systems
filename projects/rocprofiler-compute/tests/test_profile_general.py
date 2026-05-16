@@ -69,7 +69,7 @@ ROOF_ONLY_FILES = sorted([
 ])
 
 METRIC_THRESHOLDS = {
-    "2.1.12": {"absolute": 0, "relative": 8},
+    "2.1.11": {"absolute": 0, "relative": 8},
     "3.1.1": {"absolute": 0, "relative": 10},
     "3.1.10": {"absolute": 0, "relative": 10},
     "3.1.11": {"absolute": 0, "relative": 1},
@@ -615,7 +615,7 @@ def test_path(binary_handler_profile_rocprof_compute):
 def test_path_rocflop(binary_handler_profile_rocprof_compute):
     # Test whether multiprocess workloads like rocflop are handled correctly
     workload_dir = common.get_output_dir()
-    options = ["--block", "2.1.1"]
+    options = ["--block", "2.1.0"]
     _ = binary_handler_profile_rocprof_compute(
         config,
         workload_dir,
@@ -1161,6 +1161,42 @@ def test_analyze_rocpd(
         check_cols(table_name, orm_obj)
 
     os.remove(f"{db_name}.db")
+    common.clean_output_dir(config["cleanup"], workload_dir)
+
+
+@pytest.mark.misc
+def test_save_csv(
+    binary_handler_profile_rocprof_compute, binary_handler_analyze_rocprof_compute
+):
+    workload_dir = common.get_output_dir(param_id="profile")
+    analysis_workload_dir = common.get_output_dir(param_id="analysis")
+    options = ["--format-rocprof-output", "rocpd"]
+    binary_handler_profile_rocprof_compute(config, workload_dir, options)
+
+    code = binary_handler_analyze_rocprof_compute([
+        "analyze",
+        "--output-format",
+        "csv",
+        "--output-name",
+        analysis_workload_dir,
+        "--path",
+        workload_dir,
+    ])
+    assert code == 0
+
+    csv_dir = Path(analysis_workload_dir)
+    assert csv_dir.is_dir()
+
+    expected_view_csvs = ["kernel.csv", "kernel_metric.csv", "workload_metric.csv"]
+    for csv_name in expected_view_csvs:
+        csv_path = csv_dir / csv_name
+        assert csv_path.is_file(), f"Missing per-view CSV: {csv_path}"
+        df = pd.read_csv(csv_path)
+        assert len(df.index) >= 1, f"Per-view CSV is empty: {csv_path}"
+
+    assert not Path(f"{analysis_workload_dir}.db").exists()
+
+    common.clean_output_dir(config["cleanup"], analysis_workload_dir)
     common.clean_output_dir(config["cleanup"], workload_dir)
 
 

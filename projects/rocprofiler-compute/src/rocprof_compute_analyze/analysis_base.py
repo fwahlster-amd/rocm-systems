@@ -416,10 +416,14 @@ class OmniAnalyze_Base:
                         "Re-profile with a ROCm version that supports rocpd "
                         "database output to use the default workflow."
                     )
-                    with open(output_file, "w", newline="") as outfile:
+                    with open(
+                        output_file, "w", newline="", encoding="utf-8"
+                    ) as outfile:
                         writer = None
                         for result_file in result_files:
-                            with open(result_file, newline="") as infile:
+                            with open(
+                                result_file, newline="", encoding="utf-8"
+                            ) as infile:
                                 reader = csv.reader(infile)
                                 header = next(reader)
                                 if writer is None:
@@ -714,7 +718,7 @@ class OmniAnalyze_Base:
         if args.output_format == "txt":
             output_filename = args.output_name or f"rocprof_compute_{get_uuid()}"
             output_filename += ".txt"
-            self._output = open(output_filename, "w+")
+            self._output = open(output_filename, "w+", encoding="utf-8")
             console_warning("analysis", f"Created file: {output_filename}")
         elif args.output_format == "stdout":
             self._output = sys.stdout
