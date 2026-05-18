@@ -21,6 +21,13 @@ struct ncclDevrMemory {
   size_t size;
   size_t bigOffset; // offset in big VA space
   ncclGinWindow_t rmaDevWins[NCCL_GIN_MAX_CONNECTIONS];
+  // Communicator-wide aggregates over all nRanks, populated via bootstrapAllGather
+  int maxGlobalNumSegments;    // max(numSegments) across all communicator ranks
+  bool globalHasSysmemSegment; // true if any communicator rank has a sysmem segment
+  // LSA-team aggregates, derived from a global allgather
+  int* lsaNumSegments;   // numSegments for each LSA rank, length lsaSize
+  // GIN registration state
+  int numGinSegments;                          // 1 if !globalHasSysmemSegment; else == numSegments
 };
 
 struct ncclDevrWindowSorted {
@@ -91,6 +98,12 @@ ncclResult_t ncclDevrInitOnce(struct ncclComm* comm) {
   
   ncclSpaceConstruct(&devr->bigSpace);
   ncclShadowPoolConstruct(&devr->shadows);
+
+  // RCCL proxy-only path: device-side GIN is never activated.
+  devr->ginEnabled = false;
+  // rmaProxyEnabled: true when RMA proxy is globally supported for this communicator.
+  devr->rmaProxyEnabled = comm->globalRmaProxySupport;
+
   return ncclSuccess;
 
 fail_lsaRankList:
@@ -368,6 +381,8 @@ static ncclResult_t symMemoryObtain(
   mem->refCount = 0;
   mem->memHandle = memHandle;
   mem->size = size;
+  // RCCL: proxy-only path; device-side GIN is not enabled, so always 1 GIN segment.
+  mem->numGinSegments = 1;
  
   // Grab offset in the big space.
   NCCLCHECKGOTO(ncclSpaceAlloc(&devr->bigSpace, devr->bigSize, size, devr->granularity, &bigOffset), ret, fail_mem);
@@ -471,6 +486,7 @@ static ncclResult_t symWindowCreate(
   winDevHost->lsaRank = devr->lsaSelf;
   winDevHost->worldRank = comm->rank;
   winDevHost->winHost = (void*)win;
+  
   CUDACHECK(cudaMemcpyAsync(winDev, winDevHost, sizeof(struct ncclWindow_vidmem), cudaMemcpyHostToDevice, stream));
 
   NCCLCHECK(symWindowTableInitOnce(comm, stream)); // ensure devr->windowTable exists
@@ -873,6 +889,33 @@ ncclResult_t ncclDevrFindWindow(
   } else {
     *outWin = nullptr;
   }
+  return ncclSuccess;
+}
+
+bool ncclDevrWindowIsMultiSegment(struct ncclDevrWindow* win) {
+  return win != NULL && win->memory->maxGlobalNumSegments > 1;
+}
+
+bool ncclDevrWindowHasSysmemSegment(struct ncclDevrWindow* win) {
+  return win != NULL && win->memory->globalHasSysmemSegment;
+}
+
+// RCCL uses the GIN proxy path only — all inter-node ranks are unreachable via LSA.
+// The LSA team is always a strict subset of the world (or a singleton), never the full
+// communicator, so this always returns false.
+bool ncclDevrIsOneLsaTeam(struct ncclComm* comm) {
+  // RCCL: LSA not used — proxy path only. Always returns false.
+  (void)comm;
+  return false;
+}
+
+// Since no LSA teams span the full communicator in RCCL's proxy-only path, any caller
+// that reaches this function is operating under incorrect assumptions. Return an identity
+// mapping as a safe placeholder (the proxy path never uses the LSA rank for non-LSA peers).
+ncclResult_t ncclDevrWorldToLsaRank(struct ncclComm* comm, int peerWorldRank, int* peerLsaRank) {
+  // RCCL: LSA not used — proxy path only. Identity mapping.
+  (void)comm;
+  *peerLsaRank = peerWorldRank;
   return ncclSuccess;
 }
 

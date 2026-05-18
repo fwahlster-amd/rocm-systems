@@ -14,8 +14,6 @@
 #include "gdrwrap.h"
 #include "comm.h"
 #include "bootstrap.h"
-#define RCCL_RMA_CU_PATH_DISABLED
-// TODO: compiler.h is NCCL-only; symbols inlined in nccl_merge_stubs.h (temporary merge W/A)
 // #include "compiler.h"
 #include "nccl_merge_stubs.h"
 #include "rma/rma.h"
@@ -26,9 +24,7 @@
 #else
 #define NCCL_GIN_PROXY_VERSION 100  /* stub value; GIN proxy not used at runtime on Windows */
 #endif
-// TODO: os.h is NCCL-only; ncclOsGetPageSize stub in nccl_merge_stubs.h (temporary merge W/A)
-// #include "os.h"
-
+//#include "os.h"
 
 extern int64_t ncclParamDmaBufEnable();
 extern int64_t ncclParamIbDataDirect();
@@ -39,9 +35,7 @@ NCCL_PARAM(RmaProxyDumpSignal, "RMA_PROXY_DUMP_SIGNAL", -1);
 NCCL_PARAM(RmaProxyQueueSize, "RMA_PROXY_QUEUE_SIZE", -1);
 
 #include <signal.h>
-#ifndef RCCL_RMA_CU_PATH_DISABLED
 static ncclRmaProxyState* ncclLastRmaProxyState;
-#endif
 
 ncclResult_t dumpRmaProxyState(struct ncclRmaProxyState* rmaProxyState);
 void ncclDumpRmaProxyState(int signal);
@@ -115,15 +109,13 @@ static uint64_t isPowerOfTwo(uint64_t n) { return (n > 0) && ((n & (n - 1)) == 0
 
 // ---- Context lifecycle ----
 
-#ifndef RCCL_RMA_CU_PATH_DISABLED
-
 static ncclResult_t ncclRmaProxyCtxAlloc(struct ncclComm* comm, ncclGin_t* ginComm, struct ncclRmaProxyCtx* rmaProxyCtx) {
   // The clean up in case of failure will be done by the ncclRmaProxyDestroyContext function invoked by the caller.
   // Allocate the signals on the GPU and then register the memory region with the GIN plugin.
   // Enforcing strong ordering on the signals mr is vital to ensure ordering between puts and signals.
   size_t signalsBufSize = (comm->nRanks + 1) * sizeof(uint64_t);
   NCCLCHECK(ncclCuMemAlloc((void **)&rmaProxyCtx->signalsDev, &rmaProxyCtx->signalsCumemhandle,
-                           CU_MEM_HANDLE_TYPE_NONE, signalsBufSize, comm->memManager));
+                           CU_MEM_HANDLE_TYPE_NONE, signalsBufSize /*, comm->memManager*/));
   CUDACHECK(cudaMemset(rmaProxyCtx->signalsDev, 0, signalsBufSize));
   NCCLCHECK(ncclRmaProxyRegMrSym(ginComm, rmaProxyCtx->ginCollComm, rmaProxyCtx->props, rmaProxyCtx->signalsDev, signalsBufSize,
                                  NCCL_PTR_CUDA, NCCL_NET_MR_FLAG_FORCE_SO,
@@ -191,7 +183,7 @@ static ncclResult_t ncclRmaProxyCtxAllocGraph(struct ncclComm* comm, ncclGin_t* 
   // Allocate the flush buffer on the GPU and then register the memory region with the GIN plugin.
   size_t flushBufSize = comm->nRanks * sizeof(uint64_t);
   NCCLCHECK(ncclCuMemAlloc((void **)&rmaProxyCtx->flushBufDev, &rmaProxyCtx->flushBufCumemhandle,
-                            CU_MEM_HANDLE_TYPE_NONE, flushBufSize, comm->memManager));
+                            CU_MEM_HANDLE_TYPE_NONE, flushBufSize/*, comm->memManager*/));
   CUDACHECK(cudaMemset(rmaProxyCtx->flushBufDev, 0, flushBufSize));
   NCCLCHECK(ncclRmaProxyRegMrSym(ginComm, rmaProxyCtx->ginCollComm, rmaProxyCtx->props, rmaProxyCtx->flushBufDev, flushBufSize,
                                   NCCL_PTR_CUDA, NCCL_NET_MR_FLAG_FORCE_SO,
@@ -305,12 +297,12 @@ ncclResult_t ncclRmaProxyDestroyContext(ncclGin_t* ginComm, void* rmaProxyCtx){
   // Free signals
   if (ginComm && ctx->ginCollComm && ctx->signalsMhandle)
     NCCLCHECK(ginComm->deregMrSym(ctx->ginCollComm, ctx->signalsMhandle));
-  if (ctx->signalsDev) NCCLCHECK(ncclCudaFree(ctx->signalsDev, ctx->comm->memManager));
+  if (ctx->signalsDev) NCCLCHECK(ncclCudaFree(ctx->signalsDev/*, ctx->comm->memManager*/));
 
   // Free flush buffer
   if (ginComm && ctx->ginCollComm && ctx->flushBufMhandle)
     ginComm->deregMrSym(ctx->ginCollComm, ctx->flushBufMhandle);
-  if (ctx->flushBufDev) ncclCudaFree(ctx->flushBufDev, ctx->comm->memManager);
+  if (ctx->flushBufDev) ncclCudaFree(ctx->flushBufDev/*, ctx->comm->memManager*/);
 
   // Free CPU-accessible signals
   if (ginComm && ctx->ginCollComm && ctx->cpuAccessSignalsMhandle)
@@ -624,24 +616,3 @@ ncclResult_t dumpRmaProxyState(struct ncclRmaProxyState* rmaProxyState) {
 void ncclDumpRmaProxyState(int signal) {
   dumpRmaProxyState(ncclLastRmaProxyState);
 }
-
-#else // RCCL_RMA_CU_PATH_DISABLED
-
-ncclResult_t ncclRmaProxyCreateContext(struct ncclComm*, void*, ncclNetProperties_t, void**, ncclNetDeviceHandle_t**) {
-  WARN("ncclRmaProxyCreateContext: CU path disabled in RCCL"); return ncclInternalError;
-}
-ncclResult_t ncclRmaProxyDestroyContext(ncclGin_t*, void*) { return ncclSuccess; }
-ncclResult_t ncclRmaProxyRegister(struct ncclComm*, void*, size_t, void* rmaHostWins[NCCL_GIN_MAX_CONNECTIONS], ncclGinWindow_t rmaDevWins[NCCL_GIN_MAX_CONNECTIONS]) {
-  WARN("ncclRmaProxyRegister: CU path disabled in RCCL"); return ncclInternalError;
-}
-ncclResult_t ncclRmaProxyDeregister(struct ncclComm*, void*[NCCL_GIN_MAX_CONNECTIONS]) {
-  WARN("ncclRmaProxyDeregister: CU path disabled in RCCL"); return ncclInternalError;
-}
-ncclResult_t ncclRmaProxyConnectOnce(struct ncclComm*) {
-  WARN("ncclRmaProxyConnectOnce: CU path disabled in RCCL"); return ncclInternalError;
-}
-ncclResult_t ncclRmaProxyFinalize(struct ncclComm*) { return ncclSuccess; }
-ncclResult_t dumpRmaProxyState(struct ncclRmaProxyState*) { return ncclSuccess; }
-void ncclDumpRmaProxyState(int) {}
-
-#endif // RCCL_RMA_CU_PATH_DISABLED

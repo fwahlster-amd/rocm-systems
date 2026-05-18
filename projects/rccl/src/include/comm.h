@@ -825,6 +825,7 @@ struct ncclComm {
   struct ncclRegCache regCache;
   int isAllNvlink;
   bool isAllDirectP2p;
+  bool isAllCudaP2p;
   int symmetricSupport;
   bool useNetPXN;
   bool useGdr;

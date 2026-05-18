@@ -5,7 +5,6 @@
  * See LICENSE.txt for more license information
  *************************************************************************/
 
-#define RCCL_RMA_CU_PATH_DISABLED
 #include <assert.h>
 #include <cuda_runtime.h>
 #include <cuda.h>
@@ -14,12 +13,30 @@
 #include "checks.h"
 #include "gdrwrap.h"
 #include "comm.h"
-// TODO: compiler.h is NCCL-only; symbols inlined in nccl_merge_stubs.h (temporary merge W/A)
-// #include "compiler.h"
+//#include "compiler.h"
 #include "nccl_merge_stubs.h"
 #include "rma/rma.h"
 #include "rma/rma_proxy.h"
 #include "dev_runtime.h"
+
+#ifndef CU_STREAM_WRITE_VALUE_DEFAULT
+#define CU_STREAM_WRITE_VALUE_DEFAULT 0
+#endif
+
+ncclResult_t ncclCuStreamBatchMemOp(hipStream_t stream, unsigned int numOps, hipStreamBatchMemOpParams* batchParams) {
+  ncclResult_t ret = ncclSuccess;
+  const unsigned int maxOpsPerBatch = 255;
+
+  for (unsigned int offset = 0; offset < numOps; offset += maxOpsPerBatch) {
+    unsigned int opsInThisChunk = (numOps - offset < maxOpsPerBatch) ? (numOps - offset) : maxOpsPerBatch;
+    CUCHECKGOTO(hipStreamBatchMemOp(stream, opsInThisChunk, &batchParams[offset], 0), ret, fail);
+  }
+
+exit:
+  return ret;
+fail:
+  goto exit;
+}
 
 // ---- Descriptor build ----
 
@@ -47,7 +64,6 @@ static ncclResult_t ncclRmaProxyPutDescFromTask(struct ncclComm* comm, struct nc
     desc->doneSeqDev = &rmaProxyCtx->doneSeqsDev[task->peer];
     desc->doneSeqGdrHandle = rmaProxyCtx->doneSeqsGdrHandle;
   }
-#ifndef RCCL_RMA_CU_PATH_DISABLED
   else {
     desc->opSeq = 1;
     // Allocation during graph capture, off the execution critical path
@@ -55,7 +71,6 @@ static ncclResult_t ncclRmaProxyPutDescFromTask(struct ncclComm* comm, struct nc
     NCCLCHECKGOTO(allocMemCPUAccessible(&desc->doneSeq, &desc->doneSeqDev, 1, 0, &desc->doneSeqGdrHandle, comm->memManager), ret, fail);
     desc->persistPlan = plan;
   }
-#endif
 
   if (task->signalMode == NCCL_SIGNAL_NONE) {
     desc->putSignal.signal.op = 0;
@@ -68,12 +83,10 @@ static ncclResult_t ncclRmaProxyPutDescFromTask(struct ncclComm* comm, struct nc
   }
 exit:
   return ret;
-#ifndef RCCL_RMA_CU_PATH_DISABLED
 fail:
   if (desc->readySeq)
     freeMemCPUAccessible(desc->readySeq, desc->readySeqGdrHandle, comm->memManager);
   goto exit;
-#endif
 }
 
 static ncclResult_t ncclRmaProxyWaitDescFromTask(struct ncclComm* comm, struct ncclRmaProxyCtx* rmaProxyCtx,
@@ -89,7 +102,6 @@ static ncclResult_t ncclRmaProxyWaitDescFromTask(struct ncclComm* comm, struct n
     desc->waitSignal.waitPeers = task->peers;
     desc->waitSignal.waitSignals = task->nsignals;
   }
-#ifndef RCCL_RMA_CU_PATH_DISABLED
   else {
     desc->opSeq = 1;
     desc->waitSignal.waitPeers = task->peers;
@@ -103,15 +115,12 @@ static ncclResult_t ncclRmaProxyWaitDescFromTask(struct ncclComm* comm, struct n
     NCCLCHECKGOTO(allocMemCPUAccessible(&desc->doneSeq, &desc->doneSeqDev, 1, 0, &desc->doneSeqGdrHandle, comm->memManager), ret, fail);
     desc->persistPlan = plan;
   }
-#endif
 exit:
   return ret;
-#ifndef RCCL_RMA_CU_PATH_DISABLED
 fail:
   if (desc->readySeq)
     freeMemCPUAccessible(desc->readySeq, desc->readySeqGdrHandle, comm->memManager);
   goto exit;
-#endif
 }
 
 // ---- Descriptor destroy ----
@@ -122,14 +131,12 @@ ncclResult_t ncclRmaProxyDestroyDescNonPersistent(struct ncclRmaProxyDesc* desc)
 }
 
 ncclResult_t ncclRmaProxyDestroyDescPersistent(struct ncclComm* comm, struct ncclRmaProxyDesc* desc) {
-#ifndef RCCL_RMA_CU_PATH_DISABLED
   if (desc->readySeqGdrHandle || desc->readySeq) {
     freeMemCPUAccessible(desc->readySeq, desc->readySeqGdrHandle, comm->memManager);
   }
   if (desc->doneSeqGdrHandle || desc->doneSeq) {
     freeMemCPUAccessible(desc->doneSeq, desc->doneSeqGdrHandle, comm->memManager);
   }
-#endif
   if (desc->rmaDescType == ncclRmaDescTypeWaitSignal) {
     free(desc->waitSignal.waitPeers);
     free(desc->waitSignal.waitSignals);
@@ -173,20 +180,21 @@ static inline ncclResult_t ncclRmaProxyEnqueuePersistentDesc(
 // ---- Launch-time API ----
 
 ncclResult_t ncclRmaProxyPutLaunch(struct ncclComm* comm, struct ncclKernelPlan* plan, cudaStream_t stream) {
+  ncclResult_t ret = ncclSuccess;
+
   if (!comm->rmaState.rmaProxyState.connected) {
     WARN("RMA proxy is not connected");
     return ncclInternalError;
   }
 
-#ifndef RCCL_RMA_CU_PATH_DISABLED
-  ncclResult_t ret = ncclSuccess;
   bool persistent = plan->persistent;
   int ctx = plan->rmaArgs->ctx;
   int nRmaTasksProxy = plan->rmaArgs->nRmaTasksProxy;
   struct ncclRmaProxyCtx * rmaProxyCtx = (struct ncclRmaProxyCtx *)comm->rmaState.rmaProxyState.rmaProxyCtxs[ctx];
+
   int opsPerTask = persistent ? 3 : 2;
   struct ncclRmaProxyDesc *desc = nullptr;
-  CUstreamBatchMemOpParams* batchParams = nullptr;
+  hipStreamBatchMemOpParams* batchParams = nullptr;
   NCCLCHECK(ncclCalloc(&batchParams, opsPerTask * nRmaTasksProxy));
 
   int batchIdx = 0;
@@ -263,22 +271,18 @@ exit:
 fail:
   free(desc);
   goto exit;
-#else
-  WARN("ncclRmaProxyPutLaunch: CU path disabled in RCCL");
-  return ncclInternalError;
-#endif
 }
 
 
 
 ncclResult_t ncclRmaProxyWaitLaunch(struct ncclComm* comm, struct ncclKernelPlan* plan, cudaStream_t stream) {
+  ncclResult_t ret = ncclSuccess;
+
   if (!comm->rmaState.rmaProxyState.connected) {
     WARN("RMA proxy is not connected");
     return ncclInternalError;
   }
 
-#ifndef RCCL_RMA_CU_PATH_DISABLED
-  ncclResult_t ret = ncclSuccess;
   bool persistent = plan->persistent;
   int ctx = plan->rmaArgs->ctx;
   struct ncclRmaProxyCtx* rmaProxyCtx = (struct ncclRmaProxyCtx*)comm->rmaState.rmaProxyState.rmaProxyCtxs[ctx];
@@ -291,7 +295,7 @@ ncclResult_t ncclRmaProxyWaitLaunch(struct ncclComm* comm, struct ncclKernelPlan
   assert(plan->rmaArgs->nRmaTasksProxy == 1);
 
   size_t opIdx = 0;
-  CUstreamBatchMemOpParams* batchParams = nullptr;
+  hipStreamBatchMemOpParams* batchParams = nullptr;
   struct ncclRmaProxyDesc* desc = nullptr;
 
   if (task->signalMode == NCCL_SIGNAL) {
@@ -352,10 +356,6 @@ exit:
 fail:
   free(desc);
   goto exit;
-#else
-  WARN("ncclRmaProxyWaitLaunch: CU path disabled in RCCL");
-  return ncclInternalError;
-#endif
 }
 
 // ---- Graph reclaim ----

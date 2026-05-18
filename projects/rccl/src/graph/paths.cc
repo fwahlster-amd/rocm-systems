@@ -272,13 +272,14 @@ ncclResult_t ncclGetUserP2pLevel(int* level) {
 }
 
 ncclResult_t ncclTopoCheckP2p(struct ncclComm* comm, struct ncclTopoSystem* system, int rank1, int rank2,
-                              int* p2p, int *read, int* intermediateRank) {
+                              int* p2p, int *read, int* intermediateRank, int* cudaP2p) {
   int mnnvl = 0;
   struct ncclPeerInfo* info1 = NULL;
   struct ncclPeerInfo* info2 = NULL;
   *p2p = 0;
   if (read) *read = 0;
   if (intermediateRank) *intermediateRank = -1;
+  if (cudaP2p) *cudaP2p = 0;
 
   // Rule out different nodes / isolated containers
   if (comm) {
@@ -379,6 +380,20 @@ ncclResult_t ncclTopoCheckP2p(struct ncclComm* comm, struct ncclTopoSystem* syst
     struct ncclTopoNode* gpu2 = system->nodes[GPU].nodes+g2;
     // Enable P2P Read for Ampere/NVLink only
     if (read && (gpu1->gpu.cudaCompCap == gpu2->gpu.cudaCompCap) && (gpu1->gpu.cudaCompCap == 80)) *read = 1;
+  }
+
+  bool checkNvml = false; // NVML P2P check not used on AMD; computed inside HIP guard above
+  if (cudaP2p) {
+    if (checkNvml) {
+      int n1, n2;
+      n1 = system->nodes[GPU].nodes[g1].gpu.dev;
+      n2 = system->nodes[GPU].nodes[g2].gpu.dev;
+      *cudaP2p = (ncclNvmlDevicePairs[n1][n2].p2pStatusRead == NVML_P2P_STATUS_OK &&
+                  ncclNvmlDevicePairs[n1][n2].p2pStatusWrite == NVML_P2P_STATUS_OK);
+    } else {
+      // We assume P2P connectivity in case the ranks are connected using MNNVL or are on the same host.
+      *cudaP2p = (mnnvl || comm == NULL || info1->hostHash == info2->hostHash);
+    }
   }
 
   return ncclSuccess;

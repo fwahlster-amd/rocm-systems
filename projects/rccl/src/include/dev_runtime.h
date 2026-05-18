@@ -52,6 +52,8 @@ struct ncclDevrState {
   int* lsaRankList;
 
   size_t granularity; // cuMemGetAllocationGranularity
+  bool ginEnabled;
+  bool rmaProxyEnabled;
   struct ncclDevrMemory* memHead;
   struct ncclDevrWindowSorted* winSorted;
   int winSortedCapacity, winSortedCount;

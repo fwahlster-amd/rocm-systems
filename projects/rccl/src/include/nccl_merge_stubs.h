@@ -67,6 +67,15 @@ static inline void* ncclOsDlsym(ncclOsLibraryHandle handle, const char* symbol) 
 #define COMPILER_ASSUME_ALIGNED(ptr, alignment) __builtin_assume_aligned((ptr), (alignment))
 #define COMPILER_ATTRIBUTE_UNUSED __attribute__((unused))
 
+// RCCL stubs for ncclDevrWindow query functions — multi-segment and sysmem
+// window features are not implemented in RCCL; always return false.
+#ifndef _NCCL_DEVR_WINDOW_STUBS_
+#define _NCCL_DEVR_WINDOW_STUBS_
+struct ncclDevrWindow;
+static inline bool ncclDevrWindowIsMultiSegment(struct ncclDevrWindow* /*win*/) { return false; }
+static inline bool ncclDevrWindowHasSysmemSegment(struct ncclDevrWindow* /*win*/) { return false; }
+#endif
+
 // RCCL: ncclTopoGetLocalGinDevs stub — GIN topo not implemented in RCCL;
 // returns device 0 with count 1 so gin_host.cc can proceed.
 // Full topo-aware implementation would require ncclTopoGetLocalGinDev in topo.cc.

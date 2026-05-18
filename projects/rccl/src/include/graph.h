@@ -25,6 +25,8 @@ ncclResult_t ncclTopoSortSystem(struct ncclTopoSystem* system);
 ncclResult_t ncclTopoPrint(struct ncclTopoSystem* system);
 
 ncclResult_t ncclTopoComputePaths(struct ncclTopoSystem* system, struct ncclComm* comm);
+ncclResult_t ncclTopoCheckCrossNicSupport(bool* supported);
+ncclResult_t ncclTopoCheckNicFused(struct ncclComm* comm, bool* fused);
 void ncclTopoFree(struct ncclTopoSystem* system);
 ncclResult_t ncclTopoTrimSystem(struct ncclTopoSystem* system, struct ncclComm* comm);
 ncclResult_t ncclTopoComputeP2pChannels(struct ncclComm* comm);
@@ -35,7 +37,7 @@ ncclResult_t ncclTopoComputeCommCPU(struct ncclComm* comm);
 
 // Query topology
 ncclResult_t ncclTopoGetNetDev(struct ncclComm* comm, int rank, struct ncclTopoGraph* graph, int channelId, int peerRank, int64_t* id, int* dev, int* proxyRank);
-ncclResult_t ncclTopoCheckP2p(struct ncclComm* comm, struct ncclTopoSystem* system, int rank1, int rank2, int* p2p, int *read, int* intermediateRank);
+ncclResult_t ncclTopoCheckP2p(struct ncclComm* comm, struct ncclTopoSystem* system, int rank1, int rank2, int* p2p, int *read, int* intermediateRank, int* cudaP2p = nullptr);
 ncclResult_t ncclTopoCheckMNNVL(struct ncclTopoSystem* system, struct ncclPeerInfo* info1, struct ncclPeerInfo* info2, int* ret);
 enum ncclTopoGdrMode {
   ncclTopoGdrModeDisable = 0,

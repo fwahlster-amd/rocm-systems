@@ -311,3 +311,4 @@ ncclResult_t ncclCudaLibraryInit() {
   std::call_once(initOnceFlag, initOnceFunc);
   return initResult;
 }
+
