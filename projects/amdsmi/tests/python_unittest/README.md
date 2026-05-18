@@ -621,6 +621,9 @@ ok
 Ran 31 tests in 0.592s
 
 OK
+
+[----------] 31 tests ran.
+[  PASSED  ] 31 tests.
 ~~~
 
 </details>
@@ -664,6 +667,9 @@ ok
 Ran 1 test in 0.453s
 
 OK
+
+[----------] 1 test ran.
+[  PASSED  ] 1 test.
 ~~~
 </details>
 
@@ -681,6 +687,9 @@ test_parse_bdf (__main__.TestAmdSmiPythonBDF) ... ok
 Ran 3 tests in 0.001s
 
 OK
+
+[----------] 3 tests ran.
+[  PASSED  ] 3 tests.
 ```
 
 ```shell
@@ -741,6 +750,9 @@ ok
 Ran 4 tests in 0.466s
 
 OK
+
+[----------] 4 tests ran.
+[  PASSED  ] 4 tests.
 ```
 
 ```shell
