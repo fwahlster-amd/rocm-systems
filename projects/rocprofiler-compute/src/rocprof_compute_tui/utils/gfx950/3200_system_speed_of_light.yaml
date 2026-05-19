@@ -27,12 +27,16 @@ Panel Config:
     L2-Fabric Read BW: >-
       The number of bytes read by the L2 over the Infinity Fabric™ interface per
       unit time. This is also presented as a percent of the peak theoretical
-      bandwidth achievable on the specific accelerator.
+      bandwidth achievable on the specific accelerator. Note: this metric
+      measures bandwidth of read traffic from HBM, Infinity Fabric/xGMI, or
+      PCIe-connected devices, but may or may not be serviced by L3 cache.
     L2-Fabric Write BW: >-
       The number of bytes sent by the L2 over the Infinity Fabric interface by
       write and atomic operations per unit time. This is also presented as a
       percent of the peak theoretical bandwidth achievable on the specific
-      accelerator.
+      accelerator. Note: this metric measures bandwidth of write and atomic
+      traffic towards HBM, Infinity Fabric/xGMI, or PCIe-connected devices, but
+      may or may not be serviced by L3 cache.
     Kernel Time: >-
       The total duration of the executed kernel.
     Kernel Time (Cycles): >-

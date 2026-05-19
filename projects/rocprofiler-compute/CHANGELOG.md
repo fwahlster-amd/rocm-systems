@@ -25,6 +25,8 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
 
 * Unified accumulator handling across profile and analyze so each `_ACCUM`-suffixed counter is preserved instead of collapsing to `SQ_ACCUM_PREV_HIRES`
 
+* Updated gfx950 (AMD Instinct MI350) L2-Fabric, destination (PCIe / Infinity Fabric / HBM), and read/write/atomic bandwidth metric descriptions to note that the measured traffic may or may not be serviced by L3 cache.
+
 ### Removed
 
 * ``--path`` and ``--subpath`` options have been removed from profile mode. Use ``--output-directory`` instead.
