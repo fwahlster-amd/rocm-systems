@@ -622,7 +622,7 @@ Ran 31 tests in 0.592s
 
 OK
 
-[----------] 31 tests ran.
+[----------] 31 tests ran. (592 ms total)
 [  PASSED  ] 31 tests.
 ~~~
 
@@ -668,7 +668,7 @@ Ran 1 test in 0.453s
 
 OK
 
-[----------] 1 test ran.
+[----------] 1 test ran. (453 ms total)
 [  PASSED  ] 1 test.
 ~~~
 </details>
@@ -688,7 +688,7 @@ Ran 3 tests in 0.001s
 
 OK
 
-[----------] 3 tests ran.
+[----------] 3 tests ran. (1 ms total)
 [  PASSED  ] 3 tests.
 ```
 
@@ -751,7 +751,7 @@ Ran 4 tests in 0.466s
 
 OK
 
-[----------] 4 tests ran.
+[----------] 4 tests ran. (466 ms total)
 [  PASSED  ] 4 tests.
 ```
 
