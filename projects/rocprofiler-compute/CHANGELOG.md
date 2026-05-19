@@ -37,6 +37,8 @@ Full documentation for ROCm Compute Profiler is available at [https://rocm.docs.
 
 ### Resolved issues
 
+* Fixed crash "ROCPROF_OUTPUT_PATH environment variable must be set" when profiling shell-script targets such as `rocprof-compute profile -o /tmp/out -- bash run.sh`. The collector library now snapshots `ROCPROF_*` variables from `extern char **environ`, bypassing user-defined `getenv()` symbols in LD_PRELOAD scenarios. The matching rocprofiler-sdk tool fix is tracked separately in ROCM-23799.
+
 * Fixed `inf` display for metrics with zero-denominator counters (e.g., L2-Fabric Write Latency when no write requests are issued). The metric evaluation path now catches `inf` scalar results and returns `"N/A"`, consistent with existing `NaN` handling.
 
 * Kernels with missing counter data after iteration multiplexing imputation are now excluded from metrics calculations. A warning at analysis time lists the affected kernels. Their execution times remain visible in Top Stats.
