@@ -672,15 +672,47 @@ Addition:
     Bypass Req: Number of L2 cache bypass requests measured at the tag block. These requests skip normal cache lookup and go directly to memory, typically for uncacheable or write-combined memory accesses.
     Input Buffer Req: Number of raw memory requests received through the L2 cache Input Buffer (IB) from compute units and other hardware clients. This counts all incoming requests before cache lookup processing and represents the total incoming demand on the L2 cache.
     Read (128B): The total number of L2 requests to Infinity Fabric to read 128B of data from any memory location, per normalization unit.
-    Read Bandwidth - PCIe: Total number of bytes due to L2 read requests due to PCIe traffic, divided by total duration.
-    "Read Bandwidth - Infinity Fabric™": Total number of bytes due to L2 read requests due to Infinity Fabric traffic, divided by total duration.
-    Read Bandwidth - HBM: Total number of bytes due to L2 read requests due to HBM traffic, divided by total duration.
-    Write Bandwidth - PCIe: Total number of bytes due to L2 write requests due to PCIe traffic, divided by total duration.
-    "Write Bandwidth - Infinity Fabric™": Total number of bytes due to L2 write requests due to Infinity Fabric traffic, divided by total duration.
-    Write Bandwidth - HBM: Total number of bytes due to L2 write requests due to HBM traffic, divided by total duration.
-    Atomic Bandwidth - PCIe: Total number of bytes due to L2 atomic requests due to PCIe traffic, divided by total duration.
-    "Atomic Bandwidth - Infinity Fabric™": Total number of bytes due to L2 atomic requests due to Infinity Fabric traffic, divided by total duration.
-    Atomic Bandwidth - HBM: Total number of bytes due to L2 atomic requests due to HBM traffic, divided by total duration.
+    Read Bandwidth - PCIe: >-
+      Total number of bytes due to L2 read requests due to PCIe traffic, divided
+      by total duration. Note: this metric measures bandwidth of read traffic
+      from PCIe-connected devices, but may or may not be serviced by L3 cache.
+    "Read Bandwidth - Infinity Fabric™": >-
+      Total number of bytes due to L2 read requests due to Infinity Fabric
+      traffic, divided by total duration. Note: this metric measures bandwidth
+      of read traffic from a remote accelerator over Infinity Fabric (xGMI), but
+      may or may not be serviced by L3 cache.
+    Read Bandwidth - HBM: >-
+      Total number of bytes due to L2 read requests due to HBM traffic, divided
+      by total duration. Note: this metric measures bandwidth of read traffic
+      from HBM, but may or may not be serviced by L3 cache.
+    Write Bandwidth - PCIe: >-
+      Total number of bytes due to L2 write requests due to PCIe traffic,
+      divided by total duration. Note: this metric measures bandwidth of write
+      or atomic traffic towards PCIe-connected devices, but may or may not be
+      serviced by L3 cache.
+    "Write Bandwidth - Infinity Fabric™": >-
+      Total number of bytes due to L2 write requests due to Infinity Fabric
+      traffic, divided by total duration. Note: this metric measures bandwidth
+      of write or atomic traffic towards a remote accelerator over Infinity
+      Fabric (xGMI), but may or may not be serviced by L3 cache.
+    Write Bandwidth - HBM: >-
+      Total number of bytes due to L2 write requests due to HBM traffic, divided
+      by total duration. Note: this metric measures bandwidth of write or atomic
+      traffic towards HBM, but may or may not be serviced by L3 cache.
+    Atomic Bandwidth - PCIe: >-
+      Total number of bytes due to L2 atomic requests due to PCIe traffic,
+      divided by total duration. Note: this metric measures bandwidth of write
+      or atomic traffic towards PCIe-connected devices, but may or may not be
+      serviced by L3 cache.
+    "Atomic Bandwidth - Infinity Fabric™": >-
+      Total number of bytes due to L2 atomic requests due to Infinity Fabric
+      traffic, divided by total duration. Note: this metric measures bandwidth
+      of write or atomic traffic towards a remote accelerator over Infinity
+      Fabric (xGMI), but may or may not be serviced by L3 cache.
+    Atomic Bandwidth - HBM: >-
+      Total number of bytes due to L2 atomic requests due to HBM traffic,
+      divided by total duration. Note: this metric measures bandwidth of write
+      or atomic traffic towards HBM, but may or may not be serviced by L3 cache.
     Atomic - HBM: The total number of L2 atomic requests (either 32-byte or 64-byte) destined for the accelerator's local high-bandwidth memory (HBM), per normalization unit. These are read-modify-write operations that update memory atomically.
     Read Stall: >-
       The ratio of the total number of cycles the L2-Fabric interface was
@@ -722,6 +754,19 @@ Modification:
     id: 200
   metric_descriptions:
     Theoretical LDS Bandwidth: Indicates the maximum amount of bytes that could have been loaded from, stored to, or atomically updated in the LDS per unit time (see LDS Bandwidth example for more detail).
+    L2-Fabric Read BW: >-
+      The number of bytes read by the L2 over the Infinity Fabric\u2122 interface
+      per unit time. This is also presented as a percent of the peak theoretical
+      bandwidth achievable on the specific accelerator. Note: this metric
+      measures bandwidth of read traffic from HBM, Infinity Fabric/xGMI, or
+      PCIe-connected devices, but may or may not be serviced by L3 cache.
+    L2-Fabric Write BW: >-
+      The number of bytes sent by the L2 over the Infinity Fabric interface by
+      write and atomic operations per unit time. This is also presented as a
+      percent of the peak theoretical bandwidth achievable on the specific
+      accelerator. Note: this metric measures bandwidth of write and atomic
+      traffic towards HBM, Infinity Fabric/xGMI, or PCIe-connected devices, but
+      may or may not be serviced by L3 cache.
     L1I Hit Rate: The percent of L1I requests that hit on a previously loaded line the cache. Calculated as the ratio of the number of L1I requests that hit over the number of all L1I requests.
     L1I BW: The number of bytes looked up in the L1I cache per unit time. This is also presented as a percent of the peak theoretical bandwidth achievable on the specific accelerator.
 - Panel Config:
@@ -853,6 +898,33 @@ Modification:
         avg: SUM(TCC_EA0_WRREQ_WRITE_DRAM_sum) / SUM($denom)
         min: MIN((TCC_EA0_WRREQ_WRITE_DRAM_sum / $denom))
         max: MAX((TCC_EA0_WRREQ_WRITE_DRAM_sum / $denom))
+- Panel Config:
+    id: 1700
+  metric_descriptions:
+    L2-Fabric Read BW: >-
+      The number of bytes read by the L2 over the Infinity Fabric interface per
+      unit time. Note: this metric measures bandwidth of read traffic from HBM,
+      Infinity Fabric/xGMI, or PCIe-connected devices, but may or may not be
+      serviced by L3 cache.
+    L2-Fabric Write and Atomic BW: >-
+      The number of bytes sent by the L2 over the Infinity Fabric interface by
+      write and atomic operations per unit time. Note: this metric measures
+      bandwidth of write and atomic traffic towards HBM, Infinity Fabric/xGMI,
+      or PCIe-connected devices, but may or may not be serviced by L3 cache.
+    Read BW: >-
+      The total number of bytes read by the L2 cache from Infinity Fabric
+      divided by total duration. Note: this metric measures bandwidth of read
+      traffic from HBM, Infinity Fabric/xGMI, or PCIe-connected devices, but
+      may or may not be serviced by L3 cache.
+    Write and Atomic BW: >-
+      The total number of bytes written by the L2 over Infinity Fabric by write
+      and atomic operations divided by total duration. Note that on current CDNA
+      accelerators, such as the MI2XX, requests are only considered atomic by
+      Infinity Fabric if they are targeted at non-write-cacheable memory, for
+      example, fine-grained memory allocations or uncached memory allocations on
+      the MI2XX. Note: this metric measures bandwidth of write and atomic
+      traffic towards HBM, Infinity Fabric/xGMI, or PCIe-connected devices, but
+      may or may not be serviced by L3 cache.
 - Panel Config:
     id: 1800
   metric_table:
