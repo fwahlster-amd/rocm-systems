@@ -10,8 +10,10 @@
 #include "transport.h"
 #include "group.h"
 #include "nccl_device.h"
+#include "nccl_merge_stubs.h"
 
 NCCL_PARAM(WinStride, "WIN_STRIDE", -1);
+NCCL_PARAM(LsaTeamSize, "LSA_TEAM_SIZE", 0);
 
 // Complete types from src/include/dev_runtime.h
 struct ncclDevrMemory {
@@ -900,22 +902,19 @@ bool ncclDevrWindowHasSysmemSegment(struct ncclDevrWindow* win) {
   return win != NULL && win->memory->globalHasSysmemSegment;
 }
 
-// RCCL uses the GIN proxy path only — all inter-node ranks are unreachable via LSA.
-// The LSA team is always a strict subset of the world (or a singleton), never the full
-// communicator, so this always returns false.
 bool ncclDevrIsOneLsaTeam(struct ncclComm* comm) {
-  // RCCL: LSA not used — proxy path only. Always returns false.
-  (void)comm;
-  return false;
+  int lsaSize = computeLsaSize(comm);
+  return lsaSize == comm->nRanks;
 }
 
-// Since no LSA teams span the full communicator in RCCL's proxy-only path, any caller
-// that reaches this function is operating under incorrect assumptions. Return an identity
-// mapping as a safe placeholder (the proxy path never uses the LSA rank for non-LSA peers).
 ncclResult_t ncclDevrWorldToLsaRank(struct ncclComm* comm, int peerWorldRank, int* peerLsaRank) {
-  // RCCL: LSA not used — proxy path only. Identity mapping.
-  (void)comm;
-  *peerLsaRank = peerWorldRank;
+  ncclTeam_t worldTeam = ncclTeamWorld(comm);
+  ncclTeam_t lsaTeam = ncclTeamLsa(comm);
+  if (!ncclTeamRankIsMember(lsaTeam, worldTeam, peerWorldRank)) {
+    WARN("ncclDevrWorldToLsaRank: world rank %d is not a member of the LSA team", peerWorldRank);
+    return ncclInternalError;
+  }
+  *peerLsaRank = ncclTeamRankToTeam(lsaTeam, worldTeam, peerWorldRank);
   return ncclSuccess;
 }
 

@@ -19,24 +19,6 @@
 #include "rma/rma_proxy.h"
 #include "dev_runtime.h"
 
-#ifndef CU_STREAM_WRITE_VALUE_DEFAULT
-#define CU_STREAM_WRITE_VALUE_DEFAULT 0
-#endif
-
-ncclResult_t ncclCuStreamBatchMemOp(hipStream_t stream, unsigned int numOps, hipStreamBatchMemOpParams* batchParams) {
-  ncclResult_t ret = ncclSuccess;
-  const unsigned int maxOpsPerBatch = 255;
-
-  for (unsigned int offset = 0; offset < numOps; offset += maxOpsPerBatch) {
-    unsigned int opsInThisChunk = (numOps - offset < maxOpsPerBatch) ? (numOps - offset) : maxOpsPerBatch;
-    CUCHECKGOTO(hipStreamBatchMemOp(stream, opsInThisChunk, &batchParams[offset], 0), ret, fail);
-  }
-
-exit:
-  return ret;
-fail:
-  goto exit;
-}
 
 // ---- Descriptor build ----
 
