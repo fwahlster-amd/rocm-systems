@@ -10,6 +10,13 @@ Addition:
         peak: ((($max_sclk * $cu_per_gpu) * 16834) / 1000)
         pop: 100 * SUM(SQ_INSTS_VALU_MFMA_MOPS_F6F4 * 512) / SUM(End_Timestamp - Start_Timestamp) / ($max_sclk * $cu_per_gpu * 16834 / 1000)
 - Panel Config:
+    id: 200
+  metric_descriptions:
+    MFMA FLOPs (F6F4): >-
+      The total number of 4-bit and 6-bit floating-point operations executed on
+      MFMA units, per second. F6/F4 formats are supported in AMD Instinct
+      MI350 series (gfx950) and later only.
+- Panel Config:
     id: 300
   metric_table:
     id: 301

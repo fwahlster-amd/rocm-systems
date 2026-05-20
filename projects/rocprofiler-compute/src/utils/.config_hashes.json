@@ -19,7 +19,7 @@
       }
     },
     "gfx908": {
-      "delta_hash": "a9e81d4e9bb60270de4b17ee2dfc259d",
+      "delta_hash": "7b5a5aeeb7357c916c11bcbb3b1b482c",
       "files": {
         "0000_top_stats.yaml": "2819d96f5b1c3704f2ac50868a246a7f",
         "0100_system_info.yaml": "cefae2b10db8cf4b0d3a971cff5e82c8",
@@ -42,7 +42,7 @@
       }
     },
     "gfx90a": {
-      "delta_hash": "429d5af92493bb26900dddbae85fa6bb",
+      "delta_hash": "e835f88cbed7ba35c411585e5ac7da2f",
       "files": {
         "0000_top_stats.yaml": "2819d96f5b1c3704f2ac50868a246a7f",
         "0100_system_info.yaml": "cefae2b10db8cf4b0d3a971cff5e82c8",
@@ -65,7 +65,7 @@
       }
     },
     "gfx940": {
-      "delta_hash": "c578606c05da0f545ca3299facbf9edb",
+      "delta_hash": "d0ebd21a93963a7f27f2e0abb7e2b0ad",
       "files": {
         "0000_top_stats.yaml": "2819d96f5b1c3704f2ac50868a246a7f",
         "0100_system_info.yaml": "cefae2b10db8cf4b0d3a971cff5e82c8",
@@ -88,7 +88,7 @@
       }
     },
     "gfx941": {
-      "delta_hash": "047e922ae1342a16e832d34ad98aba3d",
+      "delta_hash": "aaca08fc3bd649ef6e7ebf63adfe6f75",
       "files": {
         "0000_top_stats.yaml": "2819d96f5b1c3704f2ac50868a246a7f",
         "0100_system_info.yaml": "cefae2b10db8cf4b0d3a971cff5e82c8",
@@ -111,7 +111,7 @@
       }
     },
     "gfx942": {
-      "delta_hash": "a4dcec314effebc4d0a648b45112de10",
+      "delta_hash": "92bb121ab1a7c844cb244e99d9fae1d2",
       "files": {
         "0000_top_stats.yaml": "2819d96f5b1c3704f2ac50868a246a7f",
         "0100_system_info.yaml": "cefae2b10db8cf4b0d3a971cff5e82c8",
@@ -138,7 +138,7 @@
       "files": {
         "0000_top_stats.yaml": "2819d96f5b1c3704f2ac50868a246a7f",
         "0100_system_info.yaml": "cefae2b10db8cf4b0d3a971cff5e82c8",
-        "0200_system_speed_of_light.yaml": "7a835a9565ced3365a70b87cb00936e7",
+        "0200_system_speed_of_light.yaml": "6a8a2ad93ea552a66a7182c6151a72d3",
         "0300_memory_chart.yaml": "7ad3907e24b51b5d214e647cf52cb159",
         "0400_roofline.yaml": "f0e4fdec0a633ed9f69e430bd6ef25d4",
         "0500_command_processor_cpc_cpf.yaml": "2e9e8d0f35e4c711473a1c98c067e76c",
