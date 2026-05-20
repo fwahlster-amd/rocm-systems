@@ -390,7 +390,15 @@ __device__ __forceinline__ bool is_last_active_lane() {
 #define LOAD(VAR) __atomic_load_n((VAR), __ATOMIC_SEQ_CST)
 #define STORE(DST, SRC) __atomic_store_n((DST), (SRC), __ATOMIC_SEQ_CST)
 
-enum class MemcpyKind { Put, Get };
+enum class MemcpyKind { Put, Get, PutBlocking, GetBlocking };
+
+constexpr bool is_put(MemcpyKind k) {
+  return k == MemcpyKind::Put || k == MemcpyKind::PutBlocking;
+}
+
+constexpr bool is_blocking(MemcpyKind k) {
+  return k == MemcpyKind::PutBlocking || k == MemcpyKind::GetBlocking;
+}
 
 template <int ChunkSize, CachePolicy LoadPolicy, CachePolicy StorePolicy, int Unroll>
 __device__ __forceinline__ void copy_bulk(uint8_t* __restrict__ dst_bytes,
@@ -588,6 +596,18 @@ template <MemcpyKind Kind = MemcpyKind::Put>
                            src_bytes + n_chunks * ChunkSize,
                            remainder);
   }
+}
+
+/* Is ptr_b in range [ptr_a, ptr_a + len_a) */
+[[maybe_unused]]
+__host__ __device__ static bool
+is_ptr_in_range(uintptr_t ptr_a, size_t len_a, uintptr_t ptr_b) {
+
+  if ((len_a == 0) || (ptr_b < ptr_a)) {
+    return false;
+  }
+
+  return static_cast<size_t>(ptr_b - ptr_a) < len_a;
 }
 
 int rocm_init();
