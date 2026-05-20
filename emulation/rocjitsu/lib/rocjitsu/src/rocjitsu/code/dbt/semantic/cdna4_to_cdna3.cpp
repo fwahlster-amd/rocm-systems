@@ -195,6 +195,7 @@ struct Bitop3Operands {
   uint8_t vdst = 0;
   uint16_t src[3]{};
   uint8_t truth_table = 0;
+  uint8_t op_sel = 0;
 };
 
 /// @brief Extract the overloaded V_BITOP3 truth table from a CDNA4 VOP3 pair.
@@ -214,6 +215,7 @@ struct Bitop3Operands {
   operands.src[0] = static_cast<uint16_t>(src.src0);
   operands.src[1] = static_cast<uint16_t>(src.src1);
   operands.src[2] = static_cast<uint16_t>(src.src2);
+  operands.op_sel = static_cast<uint8_t>(src.op_sel);
   operands.truth_table =
       static_cast<uint8_t>(((src.omod & 0x3) << 6) | ((src.abs & 0x7) << 3) | (src.neg & 0x7));
   return operands;
@@ -276,6 +278,11 @@ std::vector<uint32_t> lower_cdna4_bitop3_to_cdna3(const Instruction &inst,
   if (!decoded)
     return {};
   const Bitop3Operands &op = *decoded;
+  if (is_b16 && op.op_sel != 0)
+    // OP_SEL selects B16 source/destination halves. The current expansion only
+    // models the canonical low-half form, so reject other encodings rather than
+    // silently translating them as OP_SEL=0.
+    return {};
   const auto coeff = bitop3_anf_coefficients(op.truth_table);
 
   const bool needs_acc_temp = vdst_aliases_any_vgpr_source(op.vdst, op.src);
@@ -538,6 +545,11 @@ std::vector<uint32_t> lower_ds_read_b64_tr_b16_cdna4_to_cdna3(const Instruction 
   cdna4::DsMachineInst src{};
   std::memcpy(&src, raw, sizeof(src));
   if (src.gds != 0)
+    return {};
+  if (src.acc != 0)
+    // DS ACC redirects VDST into the AccVGPR file. This lowering rebuilds the
+    // result with ordinary VALU writes, so AccVGPR destinations need a separate
+    // implementation before they can be translated safely.
     return {};
 
   const uint8_t vdst = static_cast<uint8_t>(src.vdst);
