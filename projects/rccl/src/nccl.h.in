@@ -137,7 +137,9 @@ typedef struct ncclConfig_v22800 {
   NCCL_CONFIG_UNDEF_INT,                            /* nvlsCTAs */              \
   NCCL_CONFIG_UNDEF_INT,                            /* nChannelsPerNetPeer */   \
   NCCL_CONFIG_UNDEF_INT,                            /* nvlinkCentricSched */    \
+  NCCL_CONFIG_UNDEF_INT,                            /* graphUsageMode */        \
   NCCL_CONFIG_UNDEF_INT,                            /* numRmaCtx */             \
+  NCCL_CONFIG_UNDEF_INT,                            /* maxP2pPeers */           \
 }
 /*! @} */
 
