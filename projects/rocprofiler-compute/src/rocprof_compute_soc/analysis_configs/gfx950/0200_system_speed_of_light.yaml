@@ -212,6 +212,10 @@ Panel Config:
       second. Note: this does not include any 64-bit floating point operations from
       VALU instructions. This is also presented as a percent of the peak theoretical
       F64 MFMA operations achievable on the specific accelerator.
+    MFMA FLOPs (F6F4): >-
+      The total number of 4-bit and 6-bit floating-point operations executed on
+      MFMA units, per second. F6/F4 formats are supported in AMD Instinct
+      MI350 series (gfx950) and later only.
     MFMA IOPs (Int8): >-
       The total number of 8-bit integer MFMA operations executed per second.
       Note: this does not include any 8-bit integer operations from VALU instructions.
