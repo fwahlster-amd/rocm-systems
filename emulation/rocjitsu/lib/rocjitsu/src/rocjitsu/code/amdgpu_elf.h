@@ -4,6 +4,8 @@
 #ifndef ROCJITSU_CODE_AMDGPU_ELF_H_
 #define ROCJITSU_CODE_AMDGPU_ELF_H_
 
+#include "rocjitsu/code/rj_code.h"
+
 #include <cstdint>
 
 namespace rocjitsu {

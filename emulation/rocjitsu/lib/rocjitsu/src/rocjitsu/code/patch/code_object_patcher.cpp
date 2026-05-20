@@ -78,8 +78,7 @@ void write_elf_tables(std::vector<uint8_t> &image, const Elf64_Ehdr &ehdr,
 void insert_file_bytes(std::vector<uint8_t> &image, Elf64_Ehdr &ehdr,
                        std::vector<Elf64_Shdr> &shdrs, std::vector<Elf64_Phdr> &phdrs,
                        uint64_t file_offset, std::span<const uint8_t> bytes,
-                       std::optional<size_t> grown_section_index,
-                       bool grow_load_at_segment_end) {
+                       std::optional<size_t> grown_section_index, bool grow_load_at_segment_end) {
   assert(file_offset <= image.size() && "ELF insertion offset out of bounds");
   if (bytes.empty())
     return;
@@ -189,6 +188,11 @@ void insert_file_bytes(std::vector<uint8_t> &image, Elf64_Ehdr &ehdr,
 
 [[nodiscard]] bool target_uses_gfx10_plus_mode_bits(rj_code_arch_t arch) {
   return target_supports_wave32(arch);
+}
+
+[[nodiscard]] bool target_uses_gfx90a_accum_offset(rj_code_arch_t arch) {
+  return arch == ROCJITSU_CODE_ARCH_CDNA2 || arch == ROCJITSU_CODE_ARCH_CDNA3 ||
+         arch == ROCJITSU_CODE_ARCH_CDNA4;
 }
 
 [[nodiscard]] bool target_clears_rsrc1_mode_bits(rj_code_arch_t arch) {
@@ -488,6 +492,12 @@ bool CodeObjectPatcher::apply_kernel_descriptor_translation(const KdTranslation 
       AMDHSA_BITS_SET(desc->compute_pgm_rsrc3, kd::COMPUTE_PGM_RSRC3_GFX10_PLUS_INST_PREF_SIZE,
                       inst_pref);
     }
+  } else if (target_uses_gfx90a_accum_offset(target_arch) && translation.target_accvgpr_base != 0) {
+    // On GFX90A/GFX942/GFX950, AccVGPRs are placed by ACCUM_OFFSET rather than
+    // by the ordinary VGPR count. Descriptor translation may move this base up
+    // when semantic lowering needs extra ordinary VGPR scratch below it.
+    AMDHSA_BITS_SET(desc->compute_pgm_rsrc3, kd::COMPUTE_PGM_RSRC3_GFX90A_ACCUM_OFFSET,
+                    (translation.target_accvgpr_base / 4 - 1));
   }
 
   desc->private_segment_fixed_size = translation.target_private_size;
@@ -635,8 +645,7 @@ bool CodeObjectPatcher::append_cave_section(std::string_view section_name) {
       [[maybe_unused]] const uint64_t old_addr = shdrs[i].sh_addr;
       shdrs[i].sh_addr += padded_file_delta;
       assert((shdrs[i].sh_addralign <= 1 ||
-              shdrs[i].sh_addr % shdrs[i].sh_addralign ==
-                  old_addr % shdrs[i].sh_addralign) &&
+              shdrs[i].sh_addr % shdrs[i].sh_addralign == old_addr % shdrs[i].sh_addralign) &&
              "shifted allocated section lost its address alignment residue");
     }
   }
