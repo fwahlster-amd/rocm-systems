@@ -165,6 +165,14 @@ endfunction()
 # NOTE: This is due to compiler bug '--save-temps' and can be removed when fix availabe
 function(add_file_unique FILE_LIST FILE)
   get_filename_component(FILE_NAME "${FILE}" NAME)
+  get_filename_component(FILE_EXT "${FILE}" EXT)
+
+  # The '--save-temps' compiler bug only affects compiled translation units;
+  # renaming header files breaks include paths in the installed device API
+  # tree (e.g. nccl_device/gin/*.h relative-includes "../core.h").
+  if(FILE_EXT MATCHES "\\.(h|hh|hpp|hxx|cuh)$")
+    return()
+  endif()
 
   # Iterate over whatever is in the list so far
   foreach(curr_file IN LISTS ${FILE_LIST})
@@ -174,7 +182,6 @@ function(add_file_unique FILE_LIST FILE)
     if(${FILE_NAME} STREQUAL ${curr_file_name})
       get_filename_component(DIR_PATH "${FILE}" DIRECTORY)
       get_filename_component(FILE_NAME_WE "${FILE}" NAME_WE)
-      get_filename_component(FILE_EXT "${FILE}" EXT)
 
       # Construct a new file name by adding _tmp
       set(HIP_FILE "${DIR_PATH}/${FILE_NAME_WE}_tmp${FILE_EXT}" PARENT_SCOPE)
