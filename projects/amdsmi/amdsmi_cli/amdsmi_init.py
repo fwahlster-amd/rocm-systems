@@ -37,8 +37,7 @@ sys.path.insert(0, python_lib_path)
 try:
     from amdsmi import amdsmi_interface, amdsmi_exception
 except ImportError as e:
-    error_code = 200
-    print(f"Unhandled import error: {e}")
+    error_code = 192
     print("Failed to import the amdsmi Python library. Ensure it is installed in Python.")
     print(f"Alternatively, verify that the library is in the path:\n{python_lib_path}")
     print(f"Unhandled import error: {e}. Error code: {error_code}", file=sys.stderr)
@@ -137,7 +136,7 @@ def amdsmi_cli_init():
             logging.error(
                 "Drivers not loaded (amdgpu, amd_hsmp, ionic, rdma drivers not found in modules)"
             )
-            sys.exit(34)
+            sys.exit(amdsmi_interface.amdsmi_wrapper.AMDSMI_STATUS_DRIVER_NOT_LOADED)
         else:
             raise e
 
