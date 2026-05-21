@@ -197,11 +197,15 @@ void run_dynamic_copy_loop(const std::vector<uint8_t> &elf_bytes, const Cdna3Tar
     const uint32_t *src;
     uint32_t *dst;
     uint32_t n;
+    uint32_t workgroup_size;
     uint32_t stride;
   };
   auto *args = static_cast<KernArgs *>(kernarg);
   args->src = src_dev;
   args->dst = dst_dev;
+  // The kernel is launched through raw HSA rather than the HIP runtime, so pass
+  // the packet workgroup size explicitly instead of relying on blockDim.x.
+  args->workgroup_size = kWorkgroupSize;
   args->stride = kDispatchWorkItems;
 
   hsa_queue_t *queue = nullptr;

@@ -1383,13 +1383,15 @@ std::vector<ExpectedCdna3Inst> expected_cdna3_bitop3_sequence(bool b16) {
     expected.push_back(expect_vop3(274)); // v_lshlrev_b32
     expected.push_back(expect_vop3(272)); // v_lshrrev_b32
   }
+  expected.push_back(expect_vop3(321)); // v_mov_b32 copy scratch accumulator to vdst.
   expected.push_back(expect_sopp(2)); // s_branch back to original fallthrough.
   return expected;
 }
 
-std::vector<ExpectedCdna3Inst> expected_cdna3_mfma_sequence(uint16_t narrow_op) {
+std::vector<ExpectedCdna3Inst> expected_cdna3_mfma_sequence(uint16_t narrow_op,
+                                                            uint16_t src2 = 128) {
   return {
-      expect_mfma(narrow_op, 0, 1, 256, 260, 128),
+      expect_mfma(narrow_op, 0, 1, 256, 260, src2),
       expect_mfma(narrow_op, 0, 1, 258, 262, 256),
       expect_sopp(2),
   };
@@ -1478,7 +1480,7 @@ std::array<uint32_t, 2> make_cdna4_bitop3_words(uint16_t opcode, uint8_t vdst) {
 }
 
 std::array<uint32_t, 2> make_cdna4_mfma_words(uint8_t opcode, uint8_t vdst, uint16_t src0,
-                                              uint16_t src1) {
+                                              uint16_t src1, uint16_t src2 = 128) {
   rocjitsu::cdna4::Vop3pMfmaMachineInst inst{};
   inst.encoding = 0x1A7;
   inst.op = opcode;
@@ -1486,7 +1488,7 @@ std::array<uint32_t, 2> make_cdna4_mfma_words(uint8_t opcode, uint8_t vdst, uint
   inst.acc_cd = 1;
   inst.src0 = src0;
   inst.src1 = src1;
-  inst.src2 = 128; // Inline zero accumulator.
+  inst.src2 = src2;
   return encode_two_word_inst(inst);
 }
 
@@ -1509,6 +1511,10 @@ std::vector<Cdna4ToCdna3SemanticRuleCase> cdna4_to_cdna3_semantic_rule_cases() {
        expected_cdna3_mfma_sequence(77)},
       {"MfmaF32_32x32x16F16", 0x1A7, 85, make_cdna4_mfma_words(85, 0, 256, 260),
        expected_cdna3_mfma_sequence(76)},
+      {"MfmaF32_16x16x32F16AccumVgpr", 0x1A7, 84,
+       make_cdna4_mfma_words(84, 0, 256, 260, 272), expected_cdna3_mfma_sequence(77, 272)},
+      {"MfmaF32_32x32x16F16AccumVgpr", 0x1A7, 85,
+       make_cdna4_mfma_words(85, 0, 256, 260, 272), expected_cdna3_mfma_sequence(76, 272)},
       {"DsReadB64TrB16", 0x1B3, 227, make_cdna4_ds_read_b64_tr_b16_words(),
        expected_cdna3_ds_read_b64_tr_b16_sequence()},
   };
@@ -1681,7 +1687,6 @@ TEST(BinaryTranslatorE2E, Cdna4ToCdna3SemanticExpandRulesHaveTranslationFixtures
   const auto test_cases = cdna4_to_cdna3_semantic_rule_cases();
   const auto rules = rocjitsu::semantic_expand_rules_cdna4_to_cdna3();
 
-  ASSERT_EQ(test_cases.size(), rules.size());
   for (const auto &rule : rules) {
     EXPECT_TRUE(has_cdna4_to_cdna3_semantic_rule_case(rule.src_encoding_id, rule.src_opcode))
         << "missing fixture for CDNA4->CDNA3 semantic rule encoding=0x" << std::hex

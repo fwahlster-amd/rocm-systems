@@ -10,6 +10,7 @@
 #include "rocjitsu/code/patch/instruction_builder.h"
 #include "rocjitsu/isa/arch/amdgpu/cdna3/machine_insts.h"
 #include "rocjitsu/isa/arch/amdgpu/cdna4/machine_insts.h"
+#include "rocjitsu/isa/arch/amdgpu/cdna4/vop3.h"
 #include "rocjitsu/isa/instruction.h"
 
 #include <algorithm>
@@ -175,51 +176,25 @@ void emit_cdna3_mfma_to_vgpr(std::vector<uint32_t> &words, uint8_t op,
   words.push_back(w1);
 }
 
+/// @brief Find a dead contiguous VGPR run that stays below a semantic scratch limit.
+/// @details This wraps LivenessAnalysis::find_free_run() for semantic lowerings
+/// that must allocate temporary VGPRs inside the descriptor headroom reserved by
+/// the DBT pipeline. The returned base is at or after @p search_start and the
+/// half-open run [base, base + @p count) is guaranteed not to cross @p limit.
+/// @returns The first matching VGPR base, or std::nullopt if no suitable run is
+/// available before @p limit.
 [[nodiscard]] std::optional<uint16_t>
 find_free_vgpr_run_below(const LivenessAnalysis &liveness, const Instruction &inst, uint16_t count,
                          uint16_t search_start, uint16_t limit) {
-  for (uint16_t search = search_start; search + count <= limit;) {
-    auto candidate = liveness.find_free_run(&inst, count, search);
-    if (!candidate || *candidate + count > limit)
-      return std::nullopt;
-    return candidate;
-  }
-  return std::nullopt;
+  auto candidate = liveness.find_free_run(&inst, count, search_start);
+  if (!candidate || *candidate + count > limit)
+    return std::nullopt;
+  return candidate;
 }
 
 // -----------------------------------------------------------------------------
 // V_BITOP3 expansions.
 // -----------------------------------------------------------------------------
-
-struct Bitop3Operands {
-  uint8_t vdst = 0;
-  uint16_t src[3]{};
-  uint8_t truth_table = 0;
-  uint8_t op_sel = 0;
-};
-
-/// @brief Extract the overloaded V_BITOP3 truth table from a CDNA4 VOP3 pair.
-/// @details TTBL is encoded in normal VOP3 modifier fields:
-/// {OMOD[1:0], ABS[2:0], NEG[2:0]}. For V_BITOP3 those fields are data bits,
-/// not arithmetic modifiers.
-[[nodiscard]] std::optional<Bitop3Operands> decode_cdna4_bitop3(const Instruction &inst) {
-  const auto *raw = inst.raw_encoding();
-  if (!raw || static_cast<size_t>(inst.size()) < sizeof(cdna4::Vop3MachineInst))
-    return std::nullopt;
-
-  cdna4::Vop3MachineInst src{};
-  std::memcpy(&src, raw, sizeof(src));
-
-  Bitop3Operands operands;
-  operands.vdst = static_cast<uint8_t>(src.vdst);
-  operands.src[0] = static_cast<uint16_t>(src.src0);
-  operands.src[1] = static_cast<uint16_t>(src.src1);
-  operands.src[2] = static_cast<uint16_t>(src.src2);
-  operands.op_sel = static_cast<uint8_t>(src.op_sel);
-  operands.truth_table =
-      static_cast<uint8_t>(((src.omod & 0x3) << 6) | ((src.abs & 0x7) << 3) | (src.neg & 0x7));
-  return operands;
-}
 
 /// @brief Convert the 3-input truth table into algebraic-normal-form coefficients.
 /// @details Truth-table bit index is {S0[i], S1[i], S2[i]}: bit 2 is S0, bit 1
@@ -238,7 +213,8 @@ struct Bitop3Operands {
   return coeff;
 }
 
-[[nodiscard]] bool vdst_aliases_any_vgpr_source(uint8_t vdst, const uint16_t src[3]) {
+[[nodiscard]] bool vdst_aliases_any_vgpr_source(uint8_t vdst,
+                                                const std::array<uint16_t, 3> &src) {
   const uint16_t encoded_vdst = static_cast<uint16_t>(256 + vdst);
   return src[0] == encoded_vdst || src[1] == encoded_vdst || src[2] == encoded_vdst;
 }
@@ -251,7 +227,8 @@ struct Bitop3Operands {
   return false;
 }
 
-std::vector<uint32_t> lower_cdna4_bitop3_to_cdna3(const Instruction &inst,
+template <typename Bitop3Inst>
+std::vector<uint32_t> lower_cdna4_bitop3_to_cdna3(const Bitop3Inst &inst,
                                                   const LivenessAnalysis &liveness, bool is_b16) {
   // V_BITOP3 is a three-input bitwise LUT. CDNA4 encodes the eight LUT bits in
   // VOP3 modifier fields; CDNA3 has no equivalent instruction, so the lowering
@@ -269,43 +246,56 @@ std::vector<uint32_t> lower_cdna4_bitop3_to_cdna3(const Instruction &inst,
   //          ^ coeff[7] & S0 & S1 & S2
   //
   // Multiplication in that expression is bitwise AND, addition is XOR, and a
-  // constant one term is materialized as -1 so every lane bit sees true. If the
-  // destination aliases an input VGPR, the accumulator is placed in scratch and
-  // copied back at the end. Product terms with two or three inputs use one more
-  // scratch VGPR as the running AND. The B16 form computes the same 32-bit LUT
-  // then clears the high half with a left/right shift pair.
-  auto decoded = decode_cdna4_bitop3(inst);
-  if (!decoded)
-    return {};
-  const Bitop3Operands &op = *decoded;
-  if (is_b16 && op.op_sel != 0)
-    // OP_SEL selects B16 source/destination halves. The current expansion only
-    // models the canonical low-half form, so reject other encodings rather than
-    // silently translating them as OP_SEL=0.
-    return {};
-  const auto coeff = bitop3_anf_coefficients(op.truth_table);
+  // constant one term is materialized as -1 so every lane bit sees true. The B16
+  // form computes the same 32-bit LUT, then clears the high half with a
+  // left/right shift pair.
+  const uint8_t vdst = static_cast<uint8_t>(inst.vdst.encoding_value());
+  const std::array<uint16_t, 3> src = {static_cast<uint16_t>(inst.src0.encoding_value()),
+                                       static_cast<uint16_t>(inst.src1.encoding_value()),
+                                       static_cast<uint16_t>(inst.src2.encoding_value())};
 
-  const bool needs_acc_temp = vdst_aliases_any_vgpr_source(op.vdst, op.src);
+  if (is_b16 && inst.inst_.op_sel != 0)
+    // NYI: OP_SEL selects B16 source/destination halves. Source-half selection
+    // can be lowered by shifting selected high halves down before the LUT, but
+    // OP_SEL[3] is read-modify-write: it writes the high half of vdst while
+    // preserving the old low half. The generated operand metadata currently
+    // treats vdst only as a destination, so liveness may allocate vdst as
+    // scratch and clobber the implicit source value. Until that implicit vdst
+    // read is modeled, only lower the canonical OP_SEL=0 form instead of
+    // silently producing wrong code.
+    return {};
+  // V_BITOP3 overloads VOP3 modifier fields as TTBL bits instead of ordinary
+  // arithmetic modifiers: {OMOD[1:0], ABS[2:0], NEG[2:0]}.
+  const uint8_t truth_table = static_cast<uint8_t>(((inst.inst_.omod & 0x3) << 6) |
+                                                   ((inst.inst_.abs & 0x7) << 3) |
+                                                   (inst.inst_.neg & 0x7));
+  const auto coeff = bitop3_anf_coefficients(truth_table);
+
+  const bool needs_acc_temp = vdst_aliases_any_vgpr_source(vdst, src);
   const bool needs_term_temp = bitop3_needs_product_term(coeff);
-  const uint16_t scratch_count =
-      static_cast<uint16_t>((needs_acc_temp ? 1 : 0) + (needs_term_temp ? 1 : 0));
 
-  uint8_t acc = op.vdst;
+  // Scratch policy:
+  //   - No product terms and no vdst/source alias: use vdst as the accumulator.
+  //   - vdst/source alias only: use one scratch accumulator, then copy to vdst.
+  //   - Any product term: use two scratch VGPRs, one accumulator and one AND
+  //     term. This keeps the generated sequence simple and prevents the AND temp
+  //     from aliasing the accumulator. Liveness may choose vdst as scratch when
+  //     vdst is dead before the original instruction; that is fine because the
+  //     final result still lands in vdst.
+  const uint16_t scratch_count =
+      needs_term_temp ? 2 : static_cast<uint16_t>(needs_acc_temp ? 1 : 0);
+
+  uint8_t acc = vdst;
   uint8_t term = 0;
   if (scratch_count != 0) {
-    auto scratch = find_free_vgpr_run_below(liveness, inst, scratch_count, op.vdst + 1,
+    auto scratch = find_free_vgpr_run_below(liveness, inst, scratch_count, 0,
                                             kSemanticScratchVgprLimit);
-    if (!scratch)
-      scratch =
-          find_free_vgpr_run_below(liveness, inst, scratch_count, 0, kSemanticScratchVgprLimit);
     if (!scratch)
       return {};
 
-    uint16_t next = *scratch;
-    if (needs_acc_temp)
-      acc = static_cast<uint8_t>(next++);
+    acc = static_cast<uint8_t>(*scratch);
     if (needs_term_temp)
-      term = static_cast<uint8_t>(next++);
+      term = static_cast<uint8_t>(*scratch + 1);
   }
 
   std::vector<uint32_t> words;
@@ -313,11 +303,11 @@ std::vector<uint32_t> lower_cdna4_bitop3_to_cdna3(const Instruction &inst,
   auto src_for_variable = [&](uint8_t variable_mask) -> uint16_t {
     switch (variable_mask) {
     case 4:
-      return op.src[0];
+      return src[0];
     case 2:
-      return op.src[1];
+      return src[1];
     default:
-      return op.src[2];
+      return src[2];
     }
   };
 
@@ -368,13 +358,16 @@ std::vector<uint32_t> lower_cdna4_bitop3_to_cdna3(const Instruction &inst,
     emit_mov(acc, kInlineConst0);
 
   if (is_b16) {
+    // The B16 form writes a zero-extended low half. Shift left then logical
+    // shift right to clear bits 31:16 without needing a separate 0xffff mask,
+    // which CDNA3 cannot encode as an inline VALU operand.
     const uint16_t shift16 = scalar_positive_inline_u32(16);
     emit_cdna3_vop3(words, kCdna3OpLshlrevB32, acc, shift16, vgpr_src(acc));
     emit_cdna3_vop3(words, kCdna3OpLshrrevB32, acc, shift16, vgpr_src(acc));
   }
 
-  if (acc != op.vdst)
-    emit_mov(op.vdst, vgpr_src(acc));
+  if (acc != vdst)
+    emit_mov(vdst, vgpr_src(acc));
 
   return words;
 }
@@ -406,14 +399,6 @@ struct WideKMfmaLowering {
   return {shape, 0, 0, 0, 0};
 }
 
-[[nodiscard]] bool is_arch_vgpr_run(uint16_t src, uint8_t regs) {
-  return src >= 256 && src + regs <= 512;
-}
-
-[[nodiscard]] bool is_even_aligned_arch_vgpr_run(uint16_t src, uint8_t regs) {
-  return is_arch_vgpr_run(src, regs) && ((src - 256) % 2 == 0);
-}
-
 [[nodiscard]] bool ranges_overlap(uint16_t lhs_base, uint16_t lhs_count, uint16_t rhs_base,
                                   uint16_t rhs_count) {
   return lhs_base < rhs_base + rhs_count && rhs_base < lhs_base + lhs_count;
@@ -421,9 +406,9 @@ struct WideKMfmaLowering {
 
 [[nodiscard]] bool wide_mfma_needs_partial_accum_scratch(const cdna4::Vop3pMfmaMachineInst &mfma,
                                                          const WideKMfmaLowering &lowering) {
-  // acc_cd=1 writes the AccVGPR bank, while the accepted A/B operands below are
-  // ordinary VGPR operands encoded as 256-511. That bank separation means the
-  // first partial MFMA cannot clobber the A/B registers needed by the second.
+  // acc_cd=1 writes the AccVGPR bank. Because this lowering currently rejects
+  // ACC-selected A/B sources, the original A/B operands are ordinary VGPRs and
+  // cannot be clobbered by an AccVGPR partial accumulator.
   if (mfma.acc_cd != 0)
     return false;
 
@@ -457,23 +442,28 @@ std::vector<uint32_t> lower_wide_k_mfma_f16_cdna4_to_cdna3(const Instruction &in
   //
   // When D is an AccVGPR destination, `partial` is the final destination and the
   // second instruction reads it back through src2. CDNA3 resolves src2 encodings
-  // 256-511 to the AccVGPR bank when acc_cd=1, which keeps the emitted encoding
-  // identical to the Triton pattern this rule was introduced for. When D is an
-  // ordinary VGPR destination that overlaps either full A/B source window, the
-  // first MFMA must instead write a dead VGPR run; otherwise it could clobber
-  // source registers that the second MFMA has not read yet.
+  // 256-511 to the AccVGPR bank when acc_cd=1. When D is an ordinary VGPR
+  // destination that overlaps either full A/B source window, the first MFMA must
+  // instead write a dead VGPR run; otherwise it could clobber source registers
+  // that the second MFMA has not read yet.
+  //
+  // NYI: non-default cbsz/abid/blgp/acc modifiers need validation against the
+  // two-instruction expansion before this can preserve them safely.
   if (mfma.cbsz != 0 || mfma.abid != 0 || mfma.blgp != 0 || mfma.acc != 0)
     return {};
-  const uint16_t src2 = static_cast<uint16_t>(mfma.src2);
-  const bool src2_is_acc_window =
-      src2 >= 256 && static_cast<uint16_t>(src2 + lowering.dst_regs) <= 512;
-  if (src2 != kInlineConst0 && !src2_is_acc_window)
-    return {};
-  if (!is_even_aligned_arch_vgpr_run(static_cast<uint16_t>(mfma.src0), lowering.wide_src_regs) ||
-      !is_even_aligned_arch_vgpr_run(static_cast<uint16_t>(mfma.src1), lowering.wide_src_regs))
-    return {};
-  if (static_cast<uint16_t>(mfma.vdst) + lowering.dst_regs > 256)
-    return {};
+  // SRC0/SRC1 are OPR_SRC_VGPR_OR_ACCVGPR operands. The ISA defines the CDNA4
+  // wide forms as 128-bit source windows and the CDNA3 narrow forms as 64-bit
+  // source windows; the operand value is the base of that contiguous window, and
+  // 64-bit-or-wider VGPR/AccVGPR operands are even-aligned by the ISA. Since this
+  // rule rejects ACC-selected A/B sources above and assumes the original CDNA4
+  // instruction is well-formed, the split can use src and src + narrow_src_regs
+  // directly without a packing step.
+  // The original accumulator is only consumed by the first narrow MFMA; the
+  // second consumes the partial accumulator produced by the first. Forward src2
+  // unchanged and rely on the original CDNA4 instruction being well-formed.
+  // VDST has the same operand size in the CDNA4 wide form and the emitted CDNA3
+  // narrow form. Forward the original destination base and acc_cd; destination
+  // window validity is part of the source instruction's ISA contract.
 
   const bool needs_scratch = wide_mfma_needs_partial_accum_scratch(mfma, lowering);
   uint8_t partial_vdst = static_cast<uint8_t>(mfma.vdst);
@@ -481,6 +471,9 @@ std::vector<uint32_t> lower_wide_k_mfma_f16_cdna4_to_cdna3(const Instruction &in
   if (needs_scratch) {
     std::optional<uint16_t> scratch =
         find_free_vgpr_run_below(liveness, inst, lowering.dst_regs, 0, kSemanticScratchVgprLimit);
+    // NYI: if no dead VGPR run exists, the general solution is to spill a live
+    // VGPR range and use it for the partial accumulator. That waits on spill
+    // manager integration, so reject for now rather than clobbering live inputs.
     if (!scratch)
       return {};
     partial_vdst = static_cast<uint8_t>(*scratch);
@@ -545,6 +538,8 @@ std::vector<uint32_t> lower_ds_read_b64_tr_b16_cdna4_to_cdna3(const Instruction 
   cdna4::DsMachineInst src{};
   std::memcpy(&src, raw, sizeof(src));
   if (src.gds != 0)
+    // CDNA4 DS encodings can select GDS, but CDNA3 reserves GDS=1 for this
+    // instruction. Do not translate that variant into an illegal CDNA3 encoding.
     return {};
   if (src.acc != 0)
     // DS ACC redirects VDST into the AccVGPR file. This lowering rebuilds the
@@ -554,8 +549,8 @@ std::vector<uint32_t> lower_ds_read_b64_tr_b16_cdna4_to_cdna3(const Instruction 
 
   const uint8_t vdst = static_cast<uint8_t>(src.vdst);
   const uint8_t addr = static_cast<uint8_t>(src.addr);
-  if (src.vdst > 254)
-    return {};
+  // VDST is a 64-bit destination, so it names a contiguous two-register pair.
+  // Pair validity is part of the source instruction's ISA contract.
 
   constexpr uint16_t kScratchCount = 8;
   uint16_t scratch_start =
@@ -564,6 +559,11 @@ std::vector<uint32_t> lower_ds_read_b64_tr_b16_cdna4_to_cdna3(const Instruction 
     ++scratch_start;
 
   std::optional<uint16_t> scratch;
+  // The pack helper wants several even/odd register relationships to stay
+  // simple, so search only for an even-aligned run. If liveness first reports
+  // an odd free run, advance past it and keep looking instead of accepting a
+  // scratch layout that would make the emitted DS transpose sequence harder to
+  // reason about.
   for (uint16_t search = scratch_start; search + kScratchCount <= kSemanticScratchVgprLimit;) {
     auto candidate =
         find_free_vgpr_run_below(liveness, inst, kScratchCount, search, kSemanticScratchVgprLimit);
@@ -660,13 +660,19 @@ std::vector<uint32_t> lower_ds_read_b64_tr_b16_cdna4_to_cdna3(const Instruction 
 std::vector<uint32_t> expand_v_bitop3_b16_cdna4_to_cdna3(const Instruction &inst, uint32_t,
                                                          uint64_t, const LivenessAnalysis &liveness,
                                                          const LaneLayout *, const LaneLayout *) {
-  return lower_cdna4_bitop3_to_cdna3(inst, liveness, true);
+  // The rule table only routes V_BITOP3_B16 here, so use the generated
+  // instruction type directly instead of re-decoding ordinary operands.
+  return lower_cdna4_bitop3_to_cdna3(static_cast<const cdna4::VBitop3B16Vop3 &>(inst), liveness,
+                                     true);
 }
 
 std::vector<uint32_t> expand_v_bitop3_b32_cdna4_to_cdna3(const Instruction &inst, uint32_t,
                                                          uint64_t, const LivenessAnalysis &liveness,
                                                          const LaneLayout *, const LaneLayout *) {
-  return lower_cdna4_bitop3_to_cdna3(inst, liveness, false);
+  // The rule table only routes V_BITOP3_B32 here, so use the generated
+  // instruction type directly instead of re-decoding ordinary operands.
+  return lower_cdna4_bitop3_to_cdna3(static_cast<const cdna4::VBitop3B32Vop3 &>(inst), liveness,
+                                     false);
 }
 
 std::vector<uint32_t> expand_ds_read_b64_tr_b16_cdna4_to_cdna3(const Instruction &inst, uint32_t,

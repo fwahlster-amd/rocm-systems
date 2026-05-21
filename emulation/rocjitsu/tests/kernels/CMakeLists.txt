@@ -55,6 +55,7 @@ function(rj_add_triton_cdna4_asm_fixture name)
         COMMAND ${AMDCLANG} -x assembler
                 -target amdgcn-amd-amdhsa
                 -mcpu=gfx950
+                --rocm-path=${ROCM_PATH}
                 -c
                 -o ${asm_obj}
                 ${CMAKE_CURRENT_SOURCE_DIR}/${name}.s
@@ -66,6 +67,7 @@ function(rj_add_triton_cdna4_asm_fixture name)
         COMMAND ${AMDCLANG}
                 -target amdgcn-amd-amdhsa
                 -mcpu=gfx950
+                --rocm-path=${ROCM_PATH}
                 -nostdlib
                 -shared
                 -o ${hsaco}
