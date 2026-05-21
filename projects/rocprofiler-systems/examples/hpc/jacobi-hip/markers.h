@@ -16,8 +16,15 @@
 #if defined(__HIP_PLATFORM_HCC__)
 // begin HCC
 
-#    include <roctracer/roctracer_ext.h>
-#    include <roctracer/roctx.h>
+#    if __has_include(<roctracer/roctracer_ext.h>)
+#        include <roctracer/roctracer_ext.h>
+#        define ROCPROFSYS_HAS_ROCTRACER_EXT 1
+#    endif
+#    if __has_include(<rocprofiler-sdk-roctx/roctx.h>)
+#        include <rocprofiler-sdk-roctx/roctx.h>
+#    else
+#        include <roctracer/roctx.h>
+#    endif
 
 #    define BEGIN_RANGE(name, group)                                                     \
         do                                                                               \
@@ -72,13 +79,17 @@ public:
 static inline void
 initialize_logger()
 {
+#    if defined(ROCPROFSYS_HAS_ROCTRACER_EXT)
     roctracer_start();
+#    endif
 }
 
 static inline void
 finalize_logger()
 {
+#    if defined(ROCPROFSYS_HAS_ROCTRACER_EXT)
     roctracer_stop();
+#    endif
 }
 
 #else  // __HIP_PLATFORM_NVCC__
