@@ -299,16 +299,14 @@ def test_write_pmc_perf_from_rocpd_loads_database_without_results_csv():
     create_rocpd_test_db(workload_dir, db_name="pmc_perf_0.db")
     pmc_perf_path = Path(workload_dir) / "pmc_perf.csv"
 
-    assert write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path))
+    returned_df = write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path))
+    assert returned_df is not None
 
     pmc_df = pd.read_csv(pmc_perf_path)
-    assert "SQ_WAVES" not in pmc_df.columns
-    assert "Counter_Name" in pmc_df.columns
-    # COUNTER_ROWS has two kernel_gemm invocations and one kernel_mm
-    # invocation in this single pass, so Dispatch_ID is per-kernel-group:
-    # kernel_gemm -> [0, 1], kernel_mm -> [0]. (See
-    # test_write_pmc_perf_from_rocpd_normalizes_dispatch_ids_per_pass.)
-    assert list(pmc_df["Dispatch_ID"]) == [0, 1, 0]
+    assert returned_df.equals(pmc_df)
+    assert "SQ_WAVES" in pmc_df.columns
+    assert "Counter_Name" not in pmc_df.columns
+    assert list(pmc_df["Dispatch_ID"]) == [0, 1, 2]
 
     common.clean_output_dir(True, workload_dir)
 
@@ -335,7 +333,7 @@ def test_write_pmc_perf_from_rocpd_ignores_unmatched_database():
     create_rocpd_test_db(workload_dir, db_name="unrelated.db")
     pmc_perf_path = Path(workload_dir) / "pmc_perf.csv"
 
-    assert not write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path))
+    assert write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path)) is None
     assert not pmc_perf_path.exists()
 
     common.clean_output_dir(True, workload_dir)
@@ -354,7 +352,7 @@ def test_write_pmc_perf_from_rocpd_rejects_empty_counter_database():
     )
     pmc_perf_path = Path(workload_dir) / "pmc_perf.csv"
 
-    assert not write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path))
+    assert write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path)) is None
     assert not pmc_perf_path.exists()
 
     common.clean_output_dir(True, workload_dir)
@@ -376,7 +374,10 @@ def test_write_pmc_perf_from_rocpd_normalizes_dispatch_ids_per_pass():
 
     create_perfmon_pass_config(workload_dir, "pmc_perf_0")
     create_perfmon_pass_config(workload_dir, "pmc_perf_1")
-    second_process_rows = [(*row[:4], 200, *row[5:]) for row in COUNTER_ROWS]
+    second_process_rows = [
+        (*row[:4], 200, *row[5:16], "GRBM_COUNT", row[17] + 100)
+        for row in COUNTER_ROWS
+    ]
     create_rocpd_test_db(workload_dir, db_name="pmc_perf_0.db")
     create_rocpd_test_db(
         workload_dir,
@@ -385,15 +386,16 @@ def test_write_pmc_perf_from_rocpd_normalizes_dispatch_ids_per_pass():
     )
     pmc_perf_path = Path(workload_dir) / "pmc_perf.csv"
 
-    assert write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path))
+    returned_df = write_pmc_perf_from_rocpd(workload_dir, str(pmc_perf_path))
+    assert returned_df is not None
 
     pmc_df = pd.read_csv(pmc_perf_path)
-    # COUNTER_ROWS has two kernel_gemm invocations and one kernel_mm
-    # invocation per pass. With per-pass numbering, kernel_gemm gets
-    # Dispatch_IDs [0, 1] and kernel_mm gets [0] within each pass; the
-    # second pass produces the same sequence because the same kernels run
-    # in the same order.
-    assert list(pmc_df["Dispatch_ID"]) == [0, 1, 0, 0, 1, 0]
+    assert returned_df.equals(pmc_df)
+    # Counters from both pass DBs are joined into one row per logical
+    # dispatch, rather than appended as another set of long-format rows.
+    assert list(pmc_df["Dispatch_ID"]) == [0, 1, 2]
+    assert list(pmc_df["SQ_WAVES"]) == [42, 50, 30]
+    assert list(pmc_df["GRBM_COUNT"]) == [142, 150, 130]
 
     common.clean_output_dir(True, workload_dir)
 

@@ -81,6 +81,7 @@ class OmniAnalyze_Base:
         self.__supported_archs = supported_archs
         self._output: Optional[TextIO] = None
         self.__socs: Optional[dict[str, OmniSoC_Base]] = None
+        self._joined_pmc_df_by_directory: dict[str, pd.DataFrame] = {}
 
     def get_args(self) -> argparse.Namespace:
         return self.__args
@@ -408,7 +409,10 @@ class OmniAnalyze_Base:
         kokkos_trace = profiling_config.get("kokkos_trace", False)
 
         if format_rocprof == "rocpd":
-            if not file_io.write_pmc_perf_from_rocpd(str(workload_dir), output_file):
+            pmc_df = file_io.write_pmc_perf_from_rocpd(
+                str(workload_dir), output_file
+            )
+            if pmc_df is None:
                 result_files = sorted(workload_dir.glob("results_*.csv"))
                 if result_files:
                     console_warning(
@@ -441,7 +445,7 @@ class OmniAnalyze_Base:
                 )
                 return None
             console_debug(f"Created file: {output_file}")
-            return None
+            return pmc_df
 
         # Collect files to process - normalize to Path objects
         files: list[Path] = []
@@ -654,38 +658,46 @@ class OmniAnalyze_Base:
             # Multi-node or spatial case: CSV files are in subdirectories
             for subdir in workload_dir.iterdir():
                 if subdir.is_dir():
-                    self._prepare_profile_data_directory(subdir, format_rocprof)
+                    pmc_df = self._prepare_profile_data_directory(
+                        subdir, format_rocprof
+                    )
+                    if pmc_df is not None:
+                        self._joined_pmc_df_by_directory[str(subdir.resolve())] = pmc_df
         else:
             # Regular single-node case: CSV files are in workload_dir directly
-            self._prepare_profile_data_directory(workload_dir, format_rocprof)
+            pmc_df = self._prepare_profile_data_directory(
+                workload_dir, format_rocprof
+            )
+            if pmc_df is not None:
+                self._joined_pmc_df_by_directory[str(workload_dir.resolve())] = pmc_df
 
     def _prepare_profile_data_directory(
         self, directory: Path, format_rocprof: str
-    ) -> None:
+    ) -> Optional[pd.DataFrame]:
         """Ensure profiling data exists in the expected format for analysis."""
         if format_rocprof == "rocpd":
             pmc_perf = directory / "pmc_perf.csv"
-            if pmc_perf.exists():
-                console_debug(f"Using existing {pmc_perf}")
-                return
 
-            if rocpd_data.has_rocpd_pass_counter_data(directory):
+            if rocpd_data.get_rocpd_pass_db_paths(directory):
                 console_log(f"Joining rocpd database files for {directory}...")
-                self.join_prof(directory, out=str(pmc_perf))
+                pmc_df = self.join_prof(directory, out=str(pmc_perf))
                 if pmc_perf.exists():
                     console_log(f"Created {pmc_perf}")
-                    return
+                    return pmc_df
+            if pmc_perf.exists():
+                console_debug(f"Using existing {pmc_perf}")
+                return None
             if list(directory.glob("results_*.csv")):
                 console_log(f"Joining rocpd results_*.csv for {directory}...")
                 self.join_prof(directory, out=str(pmc_perf))
                 if pmc_perf.exists():
                     console_log(f"Created {pmc_perf}")
-                    return
+                    return None
             console_error(
                 f"No rocpd profiling data found in {directory}.\n"
                 "Please run 'rocprof-compute profile' first."
             )
-            return
+            return None
 
         pmc_perf = directory / "pmc_perf.csv"
         results_files = list(directory.glob("results_*.csv"))
@@ -703,6 +715,7 @@ class OmniAnalyze_Base:
                 "Please run 'rocprof-compute profile --format-rocprof-output csv' "
                 "first."
             )
+        return None
 
     # ----------------------------------------------------
     # Required methods to be implemented by child classes

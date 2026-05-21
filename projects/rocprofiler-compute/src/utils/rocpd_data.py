@@ -7,6 +7,8 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
+
 from utils.logger import console_error, console_warning
 
 # From schema definition in source/share/rocprofiler-sdk-rocpd/data_views.sql
@@ -86,9 +88,19 @@ def read_counter_collection_rows(db_paths: list[str]) -> list[dict[str, Any]]:
     return _read_query_rows(db_paths, COUNTERS_COLLECTION_QUERY)
 
 
+def read_counter_collection_df(db_paths: list[str]) -> pd.DataFrame:
+    """Read rocpd counter collection rows into a DataFrame."""
+    return _read_query_dataframe(db_paths, COUNTERS_COLLECTION_QUERY)
+
+
 def read_marker_api_trace_rows(db_paths: list[str]) -> list[dict[str, Any]]:
     """Read rocpd marker API trace rows using the normalized query."""
     return _read_query_rows(db_paths, MARKER_API_TRACE_QUERY)
+
+
+def read_marker_api_trace_df(db_paths: list[str]) -> pd.DataFrame:
+    """Read rocpd marker API trace rows into a DataFrame."""
+    return _read_query_dataframe(db_paths, MARKER_API_TRACE_QUERY)
 
 
 def count_counter_collection_rows(db_path: str) -> int:
@@ -211,6 +223,20 @@ def _read_query_rows(db_paths: list[str], query: str) -> list[dict[str, Any]]:
                 rows.extend(dict(row) for row in cursor.fetchall())
 
     return rows
+
+
+def _read_query_dataframe(db_paths: list[str], query: str) -> pd.DataFrame:
+    dataframes: list[pd.DataFrame] = []
+
+    for db_path in sorted(db_paths):
+        with closing(sqlite3.connect(db_path)) as conn:
+            dataframe = pd.read_sql_query(query, conn)
+            if not dataframe.empty:
+                dataframes.append(dataframe)
+
+    if not dataframes:
+        return pd.DataFrame()
+    return pd.concat(dataframes, ignore_index=True)
 
 
 def _materialize_query_surface(

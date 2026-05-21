@@ -283,22 +283,41 @@ def process_pc_sampling_kernel_trace(
 
 
 @demarcate
-def write_pmc_perf_from_rocpd(raw_data_dir: str, output_file: str) -> bool:
-    """Write pmc_perf.csv by joining rocpd database counter rows."""
+def write_pmc_perf_from_rocpd(
+    raw_data_dir: str, output_file: str
+) -> Optional[pd.DataFrame]:
+    """Write pmc_perf.csv from rocpd database counters and return its DataFrame."""
     workload_dir = Path(raw_data_dir)
     pass_db_paths = rocpd_data.get_rocpd_pass_db_paths(workload_dir)
-    if not rocpd_data.has_rocpd_pass_counter_data(workload_dir):
-        return False
+    if not pass_db_paths:
+        return None
 
-    db_paths = [str(path) for path in pass_db_paths]
-    counter_rows = rocpd_data.read_counter_collection_rows(db_paths)
-    if not counter_rows:
-        return False
+    counter_df = _read_rocpd_counter_dataframes(pass_db_paths)
+    if counter_df.empty:
+        return None
 
-    counter_df = pd.DataFrame(counter_rows)
-    counter_df = utils_analysis.normalize_rocpd_counter_dataframe(counter_df)
-    counter_df.to_csv(output_file, index=False)
-    return True
+    pmc_df = utils_analysis.build_rocpd_pmc_dataframe(counter_df)
+    if pmc_df.empty:
+        return None
+
+    pmc_df.to_csv(output_file, index=False)
+    return pmc_df
+
+
+def _read_rocpd_counter_dataframes(pass_db_paths: list[Path]) -> pd.DataFrame:
+    counter_dataframes: list[pd.DataFrame] = []
+
+    for pass_id, pass_db_path in enumerate(sorted(pass_db_paths)):
+        counter_df = rocpd_data.read_counter_collection_df([str(pass_db_path)])
+        if counter_df.empty:
+            continue
+        counter_df["Pass_ID"] = pass_id
+        counter_df["Pass_Name"] = pass_db_path.stem
+        counter_dataframes.append(counter_df)
+
+    if not counter_dataframes:
+        return pd.DataFrame()
+    return pd.concat(counter_dataframes, ignore_index=True)
 
 
 @demarcate
@@ -309,6 +328,7 @@ def create_df_pmc(
     kernel_verbose: int,
     verbose: int,
     config_dict: dict[str, Any],
+    preloaded_dataframes: Optional[dict[str, pd.DataFrame]] = None,
 ) -> pd.DataFrame:
     """
     Load all raw pmc counters and join into one df.
@@ -318,10 +338,19 @@ def create_df_pmc(
         raw_data_dir: str, node_name: Optional[str], kernel_verbose: int, verbose: int
     ) -> pd.DataFrame:
         pmc_perf_path = Path(raw_data_dir) / f"{schema.PMC_PERF_FILE_PREFIX}.csv"
-        if not pmc_perf_path.is_file():
+        preloaded_df = (
+            preloaded_dataframes.get(str(Path(raw_data_dir).resolve()))
+            if preloaded_dataframes is not None
+            else None
+        )
+        if preloaded_df is None and not pmc_perf_path.is_file():
             return pd.DataFrame()
 
-        df = pd.read_csv(pmc_perf_path)
+        df = (
+            preloaded_df.copy()
+            if preloaded_df is not None
+            else pd.read_csv(pmc_perf_path)
+        )
 
         if config_dict.get("format_rocprof_output") == "rocpd":
             df = utils_analysis.process_rocpd_csv(df)
