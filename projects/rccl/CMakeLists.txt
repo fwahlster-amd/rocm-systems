@@ -588,8 +588,10 @@ rocm_install(FILES       ${PROJECT_BINARY_DIR}/include/rccl/rccl.h src/include/p
 rocm_install(FILES       src/include/api_trace.h
              DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rccl/amd_detail)
 # Device API headers (NCCL-compatible layout: top-level so consumers can
-# `#include "nccl_device.h"` without a prefix, matching upstream NCCL).
-rocm_install(FILES       ${PROJECT_BINARY_DIR}/include/nccl_device.h
+# `#include "nccl_device.h"` / `<nccl.h>` without a prefix, matching upstream
+# NCCL. nccl.h is needed because nccl_device/core.h transitively includes it.
+rocm_install(FILES       ${PROJECT_BINARY_DIR}/include/nccl.h
+                         ${PROJECT_BINARY_DIR}/include/nccl_device.h
              DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
 rocm_install(DIRECTORY   ${PROJECT_BINARY_DIR}/include/nccl_device/
              DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/nccl_device)
