@@ -436,11 +436,8 @@
         },
         {
           "name": "MemManager_FixturesDebug",
-          "description": "MemManager pure-state, real-HIP, stats and allocator-wiring tests",
-          "test_filter": "MemManagerTest.*:MemManagerRealMem.*:MemManagerStatsTest.*:MemManagerAllocator.*",
-          "env_variables": {
-            "NCCL_CUMEM_ENABLE": "1"
-          }
+          "description": "MemManager pure-state, real-HIP, stats and allocator-wiring tests (CUMEM-gated subtests skip when NCCL_CUMEM_ENABLE=0; ROCm 6.4 CI does not enable CUMEM yet)",
+          "test_filter": "MemManagerTest.*:MemManagerRealMem.*:MemManagerStatsTest.*:MemManagerAllocator.*"
         }
       ]
     },
@@ -1150,8 +1147,7 @@
       "num_gpus": 2,
       "timeout": 300,
       "env_variables": {
-        "NCCL_DEBUG": "INFO",
-        "NCCL_CUMEM_ENABLE": "1"
+        "NCCL_DEBUG": "INFO"
       },
       "tests": [
         { "name": "SuspendResume_Basic",                "description": "Basic public ncclCommSuspend/Resume cycle, multi-cycle, barrier sync",      "test_filter": "SuspendResumeBasic.*" },
@@ -1383,7 +1379,7 @@
     },
     {
       "name": "Suspend/Resume - Public API",
-      "description": "Public ncclCommSuspend/Resume/MemStats end-to-end with NCCL_CUMEM_ENABLE=1",
+      "description": "Public ncclCommSuspend/Resume/MemStats end-to-end (NCCL_CUMEM_ENABLE off on ROCm 6.4 CI; CUMEM-only subtests skip via GTEST_SKIP)",
       "config": "suspend_resume_public_api",
       "enabled": true
     }
