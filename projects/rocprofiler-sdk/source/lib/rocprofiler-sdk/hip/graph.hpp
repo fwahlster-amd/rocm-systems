@@ -56,10 +56,6 @@ struct launch_state
     rocprofiler_thread_id_t thread_id      = 0;
 };
 
-/// One-time initialization. Idempotent.
-void
-init();
-
 /// Returns the currently-active launch state on this thread, or nullptr.
 launch_state*
 current_launch_state();

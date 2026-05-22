@@ -273,14 +273,6 @@ wrap_launch(RetT (*next)(::hipGraphExec_t, ::hipStream_t))
 }
 }  // namespace
 
-void
-init()
-{
-    // The map is default-constructed at static-init; nothing to do here yet.
-    // Future tasks may add lifecycle wiring (Task 8 hooks instantiate/destroy
-    // wrappers via update_table; this init() exists as a stable entry point).
-}
-
 launch_state*
 current_launch_state()
 {
