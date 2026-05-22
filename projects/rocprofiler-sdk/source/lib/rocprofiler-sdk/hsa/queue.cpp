@@ -582,9 +582,7 @@ WriteInterceptor(const void* packets,
             if(auto* gls = ::rocprofiler::hip::graph::current_launch_state(); gls != nullptr)
             {
                 graph_exec_id = gls->graph_exec_id;
-                // Atomic increment so the counter is correct even if a nested host-callback
-                // node triggers concurrent dispatches (rare but possible).
-                graph_node_id = gls->node_counter.fetch_add(1, std::memory_order_relaxed);
+                graph_node_id = gls->node_counter++;
 
                 // start_ts is unconditionally populated by wrap_launch at hipGraphLaunch
                 // enter (hip/graph.cpp); no fallback required here.

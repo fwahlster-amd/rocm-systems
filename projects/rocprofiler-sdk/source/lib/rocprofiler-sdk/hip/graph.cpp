@@ -108,9 +108,12 @@ wrap_destroy(RetT (*next)(::hipGraphExec_t))
 }
 
 // Per-thread stack of active hipGraphLaunch calls. std::deque (not std::vector)
-// because launch_state contains std::atomic<uint64_t> which is non-movable;
-// std::deque doesn't move existing elements on growth, so references handed
-// out by current_launch_state() remain valid as nested launches push.
+// for reference stability across nested launches: wrap_launch's lambda holds a
+// reference to g_launch_stack.back(), and if a graph host-callback node calls
+// back into wrap_launch on this thread it will push another launch_state.
+// std::deque does not move existing elements on growth, so the parent's
+// reference (and any pointer returned by current_launch_state()) remains
+// valid; std::vector would invalidate them on reallocation.
 thread_local std::deque<launch_state> g_launch_stack;
 
 // Resolve the launch stream's HIP device ordinal to a rocprofiler_agent_id_t.
