@@ -165,10 +165,6 @@ resolve_launch_stream_agent(::hipStream_t stream)
     return rocprofiler_agent_id_t{.handle = 0};
 }
 
-// Forward decl kept so wrap_launch (defined below) resolves the name via
-// unqualified lookup within the same anonymous namespace.
-void
-emit_graph_launch_record(const launch_state& s, rocprofiler_timestamp_t end_ts);
 void
 emit_graph_launch_record(const launch_state& s, rocprofiler_timestamp_t end_ts)
 {
