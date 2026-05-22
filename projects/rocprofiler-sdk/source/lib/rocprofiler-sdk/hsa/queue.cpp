@@ -594,12 +594,11 @@ WriteInterceptor(const void* packets,
                 }
                 ++gls->dispatch_count;
 
-                // Opportunistically capture launch stream's agent and queue if not yet set.
-                if(gls->agent_id.handle == 0)
-                {
-                    gls->agent_id = queue.get_agent().get_rocp_agent()->id;
-                    gls->queue_id = queue.get_id();
-                }
+                // NOTE: agent_id and queue_id are stamped at hipGraphLaunch enter
+                // (see hip/graph.cpp::wrap_launch). The GRAPH_LAUNCH record's
+                // agent_id reflects the *launch stream's* agent, not the per-
+                // dispatch queue's agent -- in multi-device graphs these can
+                // differ, and the launch-stream view is what spec §4.2 calls for.
             }
 
             _packet_data.callback_record =
